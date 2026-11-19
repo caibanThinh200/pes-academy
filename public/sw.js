@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pes-academy-v2';
+const CACHE_NAME = 'pes-academy-v3';
 
 const PRECACHE_ASSETS = [
   '/icons/icon-192x192.png',
