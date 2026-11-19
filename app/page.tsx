@@ -49,10 +49,10 @@ export default function MatchesPage() {
   const animationProps = shouldReduceMotion
     ? {}
     : {
-        initial: { opacity: 0, y: 12 },
-        animate: { opacity: 1, y: 0 },
-        transition: { duration: 0.25, ease: 'easeOut' as const },
-      };
+      initial: false as const,
+      animate: { opacity: 1, y: 0 },
+      transition: { duration: 0.25, ease: 'easeOut' as const },
+    };
 
   return (
     <div className="space-y-5">
@@ -148,10 +148,10 @@ export default function MatchesPage() {
           {...(shouldReduceMotion
             ? {}
             : {
-                initial: { opacity: 0, y: 12 },
-                animate: { opacity: 1, y: 0 },
-                transition: { duration: 0.25, delay: 0.1, ease: 'easeOut' as const },
-              })}
+              initial: false as const,
+              animate: { opacity: 1, y: 0 },
+              transition: { duration: 0.25, delay: 0.1, ease: 'easeOut' as const },
+            })}
         >
           <RecentMatchCard match={recentMatch} attendance={attendance} />
         </motion.div>

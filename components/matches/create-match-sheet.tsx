@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { Video } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
@@ -50,6 +51,7 @@ function CreateMatchForm({ onClose }: CreateMatchFormProps) {
   const [title, setTitle] = React.useState(defaultTitle);
   const [dateLocal, setDateLocal] = React.useState(defaultDate);
   const [location, setLocation] = React.useState(defaultLocation);
+  const [videoUrl, setVideoUrl] = React.useState('');
 
   const isValid =
     title.trim().length > 0 &&
@@ -65,6 +67,7 @@ function CreateMatchForm({ onClose }: CreateMatchFormProps) {
       title: title.trim(),
       match_date: new Date(dateLocal).toISOString(),
       location: location.trim(),
+      video_url: videoUrl.trim() || null,
     });
     onClose();
   };
@@ -113,6 +116,27 @@ function CreateMatchForm({ onClose }: CreateMatchFormProps) {
           className="h-11 w-full rounded-xl border border-border bg-background px-3 text-base text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/40"
           required
         />
+      </div>
+
+      <div className="space-y-1.5">
+        <label
+          htmlFor="match-video-url"
+          className="flex items-center gap-1.5 text-xs font-semibold text-foreground"
+        >
+          <Video className="h-3.5 w-3.5 text-primary" />
+          <span>YouTube Match Link (Optional)</span>
+        </label>
+        <input
+          id="match-video-url"
+          type="url"
+          value={videoUrl}
+          onChange={(e) => setVideoUrl(e.target.value)}
+          placeholder="https://www.youtube.com/watch?v=... (Unlisted or Public)"
+          className="h-11 w-full rounded-xl border border-border bg-background px-3 text-base text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/40"
+        />
+        <p className="text-[11px] text-muted">
+          You can also paste or update the YouTube link later on the Review screen.
+        </p>
       </div>
 
       <div className="pt-2">

@@ -2,8 +2,9 @@
 
 import * as React from 'react';
 import { motion, useReducedMotion } from 'motion/react';
-import { ShieldAlert, Award, RotateCcw, Check, Sparkles } from 'lucide-react';
+import { ShieldAlert, Award, RotateCcw, Check, Sparkles, Smartphone, Download, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
+import { usePwa } from '@/components/pwa-provider';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,7 @@ import { JerseyNumber } from '@/components/ui/jersey-number';
 
 export default function ProfilePage() {
   const { currentUser, users, setCurrentUserId, resetDemoData } = useAppStore();
+  const { isStandalone, triggerInstall } = usePwa();
   const shouldReduceMotion = useReducedMotion();
   const [resetSuccess, setResetSuccess] = React.useState(false);
 
@@ -26,7 +28,7 @@ export default function ProfilePage() {
   const animationProps = shouldReduceMotion
     ? {}
     : {
-      initial: { opacity: 0, y: 12 },
+      initial: false as const,
       animate: { opacity: 1, y: 0 },
       transition: { duration: 0.25, ease: 'easeOut' as const },
     };
@@ -135,6 +137,45 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
       </motion.div>
+
+      {/* App Installation */}
+      <Card className="border-border bg-surface shadow-sm">
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                <Smartphone className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-foreground">App Installation</p>
+                <p className="text-xs text-muted">
+                  {isStandalone
+                    ? 'Running in full-screen standalone mode'
+                    : 'Add PES Academy to your home screen for quick pitch-side access'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {isStandalone ? (
+            <Badge variant="success" className="w-fit gap-1.5 py-1 px-3">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              <span>App Installed (Standalone Mode)</span>
+            </Badge>
+          ) : (
+            <Button
+              type="button"
+              variant="primary"
+              size="md"
+              onClick={() => void triggerInstall()}
+              className="w-full justify-center gap-2 text-xs font-semibold"
+            >
+              <Download className="h-4 w-4" />
+              <span>Install App to Home Screen</span>
+            </Button>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Reset Demo Data Action */}
       <div className="pt-2">

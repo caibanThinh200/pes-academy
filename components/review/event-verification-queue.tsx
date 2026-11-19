@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Clock, Play, Trash2, CheckCircle, ShieldAlert, Sparkles } from 'lucide-react';
+import { Clock, Play, Trash2, CheckCircle, ShieldAlert, Sparkles, Check } from 'lucide-react';
 import { FootballIcon } from '@/components/icons/football';
 import { MatchEvent, User } from '@/types/database';
 import { Badge } from '@/components/ui/badge';
@@ -37,7 +37,7 @@ export function EventVerificationQueue({
         </div>
         <h3 className="text-sm font-bold text-foreground">All Clips Verified!</h3>
         <p className="mt-1 text-xs text-muted">
-          No pending AI detections remaining for this match. You can re-run &ldquo;Simulate AI Scan&rdquo; or view confirmed highlights below.
+          No pending detections in the queue. Paste your YouTube match link and run AI Match Analysis to detect goals and goalkeeper saves.
         </p>
       </div>
     );
@@ -49,6 +49,26 @@ export function EventVerificationQueue({
         const isGoal = event.event_type === 'goal';
         const isActive = event.id === activeEventId;
         const confidencePct = Math.round(event.confidence_score * 100);
+        const suggestedPlayer = event.assigned_user_id
+          ? presentPlayers.find((p) => p.id === event.assigned_user_id) ?? null
+          : null;
+
+        const sortedPlayers = [...presentPlayers].sort((a, b) => {
+          if (suggestedPlayer) {
+            if (a.id === suggestedPlayer.id) return -1;
+            if (b.id === suggestedPlayer.id) return 1;
+          }
+          if (!isGoal) {
+            if (a.position === 'gk' && b.position !== 'gk') return -1;
+            if (b.position === 'gk' && a.position !== 'gk') return 1;
+          }
+          return 0;
+        });
+
+        const jerseyLabel =
+          suggestedPlayer && suggestedPlayer.jersey_number !== null
+            ? `#${suggestedPlayer.jersey_number} `
+            : '';
 
         return (
           <motion.div
@@ -94,7 +114,16 @@ export function EventVerificationQueue({
                   )}
                 </div>
 
-                <div className="flex items-center gap-1.5 text-right">
+                <div className="flex flex-wrap items-center justify-end gap-1.5 text-right">
+                  {suggestedPlayer && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-gold/40 bg-gold/15 px-2 py-0.5 text-[10px] font-bold text-gold">
+                      <Sparkles className="h-2.5 w-2.5" />
+                      <span>
+                        AI Pick: {jerseyLabel}
+                        {suggestedPlayer.name.split(' ')[0]}
+                      </span>
+                    </span>
+                  )}
                   <span className="text-[11px] text-muted">AI Conf:</span>
                   <span
                     className={cn(
@@ -131,10 +160,63 @@ export function EventVerificationQueue({
                 >
                   {isAdmin ? (
                     <div className="space-y-3">
+                      {suggestedPlayer && (
+                        <div className="flex flex-col gap-2.5 rounded-xl border border-gold/40 bg-gold/10 p-2.5 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="relative shrink-0">
+                              <Avatar
+                                name={suggestedPlayer.name}
+                                src={suggestedPlayer.avatar_url}
+                                size="sm"
+                              />
+                              {suggestedPlayer.jersey_number !== null && (
+                                <div className="absolute -bottom-1 -right-1">
+                                  <JerseyNumber
+                                    number={suggestedPlayer.jersey_number}
+                                    size="sm"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wider text-gold">
+                                <Sparkles className="h-3 w-3" />
+                                <span>
+                                  {isGoal
+                                    ? 'AI Suggested Scorer'
+                                    : 'AI Suggested Goalkeeper'}
+                                </span>
+                              </div>
+                              <p className="truncate text-xs font-bold text-foreground">
+                                {jerseyLabel}
+                                {suggestedPlayer.name}
+                              </p>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => onConfirmEvent(event.id, suggestedPlayer.id)}
+                            className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-primary px-3 text-xs font-bold text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-95"
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                            <span>
+                              Confirm {jerseyLabel}
+                              {suggestedPlayer.name.split(' ')[0]} (+1{' '}
+                              {isGoal ? 'Goal' : 'Save'})
+                            </span>
+                          </button>
+                        </div>
+                      )}
+
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
                           <Sparkles className="h-3.5 w-3.5 text-gold" />
-                          <span>Tap player to assign this {event.event_type}:</span>
+                          <span>
+                            {suggestedPlayer
+                              ? `Or override & assign ${event.event_type} to:`
+                              : `Tap player to assign this ${event.event_type}:`}
+                          </span>
                         </span>
                         <span className="text-[10px] font-semibold text-muted">
                           {presentPlayers.length} Present Pitch-side
@@ -143,9 +225,10 @@ export function EventVerificationQueue({
 
                       {/* Horizontal Scrollable Row of Present Players */}
                       <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-0.5 scrollbar-none">
-                        {presentPlayers.map((player) => {
+                        {sortedPlayers.map((player) => {
                           const isGk = player.position === 'gk';
-                          const isRecommended = event.event_type === 'save' && isGk;
+                          const isAiPick = suggestedPlayer?.id === player.id;
+                          const isRecommended = isAiPick || (!suggestedPlayer && !isGoal && isGk);
 
                           return (
                             <button
@@ -153,12 +236,19 @@ export function EventVerificationQueue({
                               type="button"
                               onClick={() => onConfirmEvent(event.id, player.id)}
                               className={cn(
-                                'flex flex-col items-center justify-center shrink-0 rounded-xl border p-2 transition-all active:scale-95 text-center min-w-[76px]',
-                                isRecommended
+                                'relative flex flex-col items-center justify-center shrink-0 rounded-xl border p-2 transition-all active:scale-95 text-center min-w-[78px]',
+                                isAiPick
+                                  ? 'border-gold/70 bg-gold/10 shadow-sm'
+                                  : isRecommended
                                   ? 'border-primary/60 bg-primary/10 shadow-sm'
                                   : 'border-border bg-surface hover:border-primary/40 hover:bg-muted/10'
                               )}
                             >
+                              {isAiPick && (
+                                <span className="mb-1 rounded-full bg-gold px-1.5 py-0.2 text-[8px] font-black uppercase tracking-wider text-gold-foreground">
+                                  AI Pick
+                                </span>
+                              )}
                               <div className="relative mb-1">
                                 <Avatar name={player.name} src={player.avatar_url} size="sm" />
                                 {player.jersey_number !== null && (

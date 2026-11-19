@@ -6,7 +6,7 @@ export type CheckinStatus = 'pending' | 'present' | 'absent_penalized';
 export type EventType = 'goal' | 'save';
 export type EventStatus = 'pending_review' | 'confirmed' | 'rejected';
 
-export interface User {
+export type User = {
   id: string;
   name: string;
   avatar_url: string | null;
@@ -17,9 +17,9 @@ export interface User {
   total_saves: number;
   penalty_count: number;
   created_at?: string;
-}
+};
 
-export interface Match {
+export type Match = {
   id: string;
   title: string;
   match_date: string; // ISO 8601 string
@@ -27,18 +27,18 @@ export interface Match {
   status: MatchStatus;
   video_url: string | null;
   created_at?: string;
-}
+};
 
-export interface Attendance {
+export type Attendance = {
   id: string;
   match_id: string;
   user_id: string;
   vote_status: VoteStatus;
   checkin_status: CheckinStatus;
   created_at?: string;
-}
+};
 
-export interface MatchEvent {
+export type MatchEvent = {
   id: string;
   match_id: string;
   timestamp_sec: number;
@@ -47,9 +47,11 @@ export interface MatchEvent {
   assigned_user_id: string | null;
   confidence_score: number;
   status: EventStatus;
-  visual_cue?: string;
+  visual_cue?: string | null;
   created_at?: string;
-}
+};
+
+export type MatchEventRow = Omit<MatchEvent, 'timestamp_formatted'>;
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
@@ -64,21 +66,25 @@ export interface Database {
           jersey_number?: number | null;
         };
         Update: Partial<User>;
+        Relationships: [];
       };
       matches: {
         Row: Match;
         Insert: Omit<Match, 'id' | 'created_at'> & { id?: string; created_at?: string };
         Update: Partial<Match>;
+        Relationships: [];
       };
       attendance: {
         Row: Attendance;
         Insert: Omit<Attendance, 'id' | 'created_at'> & { id?: string; created_at?: string };
         Update: Partial<Attendance>;
+        Relationships: [];
       };
       match_events: {
-        Row: MatchEvent;
-        Insert: Omit<MatchEvent, 'id' | 'created_at'> & { id?: string; created_at?: string };
-        Update: Partial<MatchEvent>;
+        Row: MatchEventRow;
+        Insert: Omit<MatchEventRow, 'id' | 'created_at'> & { id?: string; created_at?: string };
+        Update: Partial<MatchEventRow>;
+        Relationships: [];
       };
     };
     Views: Record<string, never>;

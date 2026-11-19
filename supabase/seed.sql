@@ -57,10 +57,10 @@ INSERT INTO attendance (id, match_id, user_id, vote_status, checkin_status) VALU
 ON CONFLICT (match_id, user_id) DO NOTHING;
 
 -- 4. Insert 5 Match Events (Match 2 review)
-INSERT INTO match_events (id, match_id, timestamp_sec, event_type, assigned_user_id, confidence_score, status) VALUES
-  ('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000002', 14.50, 'goal', '00000000-0000-0000-0000-000000000001', 0.942, 'pending_review'),
-  ('20000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002', 38.20, 'save', '00000000-0000-0000-0000-000000000003', 0.887, 'pending_review'),
-  ('20000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000002', 72.00, 'goal', '00000000-0000-0000-0000-000000000002', 0.961, 'pending_review'),
-  ('20000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000002', 105.80, 'save', '00000000-0000-0000-0000-000000000008', 0.835, 'pending_review'),
-  ('20000000-0000-0000-0000-000000000005', '10000000-0000-0000-0000-000000000002', 142.30, 'goal', '00000000-0000-0000-0000-000000000007', 0.915, 'pending_review')
+INSERT INTO match_events (id, match_id, timestamp_sec, event_type, assigned_user_id, confidence_score, status, visual_cue) VALUES
+  ('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000002', 14.50, 'goal', '00000000-0000-0000-0000-000000000001', 0.942, 'pending_review', 'Albiceleste #10 curls a left-footed shot into the top-right corner'),
+  ('20000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002', 38.20, 'save', '00000000-0000-0000-0000-000000000003', 0.887, 'pending_review', 'Goalkeeper in green dives full-stretch to parry low drive'),
+  ('20000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000002', 72.00, 'goal', '00000000-0000-0000-0000-000000000002', 0.961, 'pending_review', 'White & sky-blue #9 finishes a one-touch counter-attack at near post'),
+  ('20000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000002', 105.80, 'save', '00000000-0000-0000-0000-000000000008', 0.835, 'pending_review', 'Point-blank reflex deflection off the crossbar by the keeper'),
+  ('20000000-0000-0000-0000-000000000005', '10000000-0000-0000-0000-000000000002', 142.30, 'goal', '00000000-0000-0000-0000-000000000007', 0.915, 'pending_review', 'Midfielder strikes a volley from the edge of the box into bottom-left')
 ON CONFLICT (id) DO NOTHING;

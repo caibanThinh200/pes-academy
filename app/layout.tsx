@@ -14,6 +14,15 @@ const manrope = Manrope({
 export const metadata: Metadata = {
   title: 'PES Academy',
   description: 'Weekly football academy management, pitch-side check-ins, and AI video tracking.',
+  icons: {
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/icons/icon-192x192.png', sizes: '192x192', type: 'image/png' },
+    ],
+    apple: [
+      { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',

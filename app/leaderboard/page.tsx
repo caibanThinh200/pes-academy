@@ -58,10 +58,10 @@ export default function LeaderboardPage() {
   const animationProps = shouldReduceMotion
     ? {}
     : {
-        initial: { opacity: 0, y: 10 },
-        animate: { opacity: 1, y: 0 },
-        transition: { duration: 0.25, ease: 'easeOut' as const },
-      };
+      initial: { opacity: 0, y: 10 },
+      animate: { opacity: 1, y: 0 },
+      transition: { duration: 0.25, ease: 'easeOut' as const },
+    };
 
   // Render Podium for Top 3 (Scorers or Saves)
   const renderPodium = (rankedList: User[], metric: 'goals' | 'saves') => {
@@ -223,7 +223,7 @@ export default function LeaderboardPage() {
       </div>
 
       {/* Tab Panels */}
-      <AnimatePresence mode="wait">
+      <AnimatePresence initial={false} mode="wait">
         {activeTab === 'scorers' && (
           <motion.div
             key="tab-scorers"
@@ -267,10 +267,10 @@ export default function LeaderboardPage() {
                             rank === 1
                               ? 'bg-gold text-gold-foreground shadow-xs'
                               : rank === 2
-                              ? 'bg-slate-300 text-slate-800 dark:bg-slate-700 dark:text-slate-200'
-                              : rank === 3
-                              ? 'bg-amber-700/80 text-white'
-                              : 'bg-muted/15 text-muted'
+                                ? 'bg-slate-300 text-slate-800 dark:bg-slate-700 dark:text-slate-200'
+                                : rank === 3
+                                  ? 'bg-amber-700/80 text-white'
+                                  : 'bg-muted/15 text-muted'
                           )}
                         >
                           {rank}

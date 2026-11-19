@@ -1,8 +1,28 @@
 'use client';
 
-import React, { createContext, useContext, useReducer, useEffect, useMemo, useCallback, useSyncExternalStore } from 'react';
-import { User, Match, Attendance, MatchEvent, CheckinStatus, VoteStatus, MatchStatus } from '@/types/database';
+import React, {
+  createContext,
+  useContext,
+  useReducer,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+  useSyncExternalStore,
+} from 'react';
+import {
+  User,
+  Match,
+  Attendance,
+  MatchEvent,
+  MatchEventRow,
+  CheckinStatus,
+  VoteStatus,
+  MatchStatus,
+} from '@/types/database';
 import { INITIAL_USERS, INITIAL_MATCHES, INITIAL_ATTENDANCE, INITIAL_EVENTS } from './mock-data';
+import { supabase, isSupabaseConfigured } from './supabase';
+import { formatTimestamp } from './utils';
 
 interface AppState {
   users: User[];
@@ -17,9 +37,10 @@ type Action =
   | { type: 'HYDRATE'; payload: Partial<AppState> }
   | { type: 'SET_ROLE'; payload: 'player' | 'admin' }
   | { type: 'SET_CURRENT_USER'; payload: string }
-  | { type: 'TOGGLE_VOTE'; payload: { matchId: string; userId: string } }
-  | { type: 'SET_CHECKIN'; payload: { matchId: string; userId: string; status: CheckinStatus } }
-  | { type: 'CREATE_MATCH'; payload: { title: string; match_date: string; location: string } }
+  | { type: 'TOGGLE_VOTE'; payload: { matchId: string; userId: string; id: string } }
+  | { type: 'SET_CHECKIN'; payload: { matchId: string; userId: string; status: CheckinStatus; id: string } }
+  | { type: 'CREATE_MATCH'; payload: { id: string; created_at: string; title: string; match_date: string; location: string; video_url?: string | null } }
+  | { type: 'UPDATE_MATCH_VIDEO_URL'; payload: { matchId: string; videoUrl: string | null } }
   | { type: 'SET_MATCH_STATUS'; payload: { matchId: string; status: MatchStatus } }
   | { type: 'FINALIZE_CHECKIN'; payload: { matchId: string } }
   | { type: 'UPDATE_EVENT'; payload: { eventId: string; updates: Partial<MatchEvent> } }
@@ -38,6 +59,74 @@ const INITIAL_STATE: AppState = {
 };
 
 const STORAGE_KEY = 'pes_academy_store_v3';
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function ensureUuid(id?: string): string {
+  return id && UUID_REGEX.test(id) ? id : crypto.randomUUID();
+}
+
+function toMatchEventRow(event: MatchEvent): MatchEventRow {
+  const { timestamp_formatted: _ignored, ...row } = event;
+  void _ignored;
+  return {
+    ...row,
+    id: ensureUuid(row.id),
+  };
+}
+
+function logSupabaseError(operation: string, error: unknown) {
+  if (error) {
+    console.error(`[Supabase] ${operation} failed:`, error);
+  }
+}
+
+async function fetchLiveStateFromSupabase(): Promise<{
+  users: User[];
+  matches: Match[];
+  attendance: Attendance[];
+  events: MatchEvent[];
+} | null> {
+  if (!supabase) return null;
+
+  try {
+    const [usersRes, matchesRes, attendanceRes, eventsRes] = await Promise.all([
+      supabase.from('users').select('*').order('jersey_number', { ascending: true }),
+      supabase.from('matches').select('*').order('match_date', { ascending: false }),
+      supabase.from('attendance').select('*'),
+      supabase.from('match_events').select('*').order('timestamp_sec', { ascending: true }),
+    ]);
+
+    if (usersRes.error || matchesRes.error || attendanceRes.error || eventsRes.error) {
+      console.warn('Failed to fetch initial state from Supabase:', {
+        usersError: usersRes.error,
+        matchesError: matchesRes.error,
+        attendanceError: attendanceRes.error,
+        eventsError: eventsRes.error,
+      });
+      return null;
+    }
+
+    const events: MatchEvent[] = (eventsRes.data || []).map((e) => {
+      const timestampSec = Number(e.timestamp_sec);
+      return {
+        ...e,
+        timestamp_sec: timestampSec,
+        confidence_score: Number(e.confidence_score),
+        timestamp_formatted: formatTimestamp(timestampSec),
+      };
+    });
+
+    return {
+      users: usersRes.data || [],
+      matches: matchesRes.data || [],
+      attendance: attendanceRes.data || [],
+      events,
+    };
+  } catch (err) {
+    console.warn('Failed to fetch initial state from Supabase:', err);
+    return null;
+  }
+}
 
 function appReducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -51,7 +140,7 @@ function appReducer(state: AppState, action: Action): AppState {
       return { ...state, currentUserId: action.payload };
 
     case 'TOGGLE_VOTE': {
-      const { matchId, userId } = action.payload;
+      const { matchId, userId, id } = action.payload;
       const existingIndex = state.attendance.findIndex(
         (a) => a.match_id === matchId && a.user_id === userId
       );
@@ -67,7 +156,7 @@ function appReducer(state: AppState, action: Action): AppState {
         };
       } else {
         const newRecord: Attendance = {
-          id: `att-${Date.now()}`,
+          id,
           match_id: matchId,
           user_id: userId,
           vote_status: 'joined',
@@ -79,7 +168,7 @@ function appReducer(state: AppState, action: Action): AppState {
     }
 
     case 'SET_CHECKIN': {
-      const { matchId, userId, status } = action.payload;
+      const { matchId, userId, status, id } = action.payload;
       const existingIndex = state.attendance.findIndex(
         (a) => a.match_id === matchId && a.user_id === userId
       );
@@ -95,7 +184,7 @@ function appReducer(state: AppState, action: Action): AppState {
         newAttendance = [
           ...state.attendance,
           {
-            id: `att-${Date.now()}`,
+            id,
             match_id: matchId,
             user_id: userId,
             vote_status: 'joined',
@@ -108,16 +197,22 @@ function appReducer(state: AppState, action: Action): AppState {
 
     case 'CREATE_MATCH': {
       const newMatch: Match = {
-        id: `match-${Date.now()}`,
         status: 'voting',
-        video_url: null,
-        created_at: new Date().toISOString(),
         ...action.payload,
+        video_url: action.payload.video_url ?? null,
       };
       return {
         ...state,
         matches: [newMatch, ...state.matches],
       };
+    }
+
+    case 'UPDATE_MATCH_VIDEO_URL': {
+      const { matchId, videoUrl } = action.payload;
+      const newMatches = state.matches.map((m) =>
+        m.id === matchId ? { ...m, video_url: videoUrl } : m
+      );
+      return { ...state, matches: newMatches };
     }
 
     case 'SET_MATCH_STATUS': {
@@ -222,10 +317,10 @@ function appReducer(state: AppState, action: Action): AppState {
       const newEvents = state.events.map((e) =>
         e.id === eventId
           ? {
-              ...e,
-              status: 'confirmed' as const,
-              assigned_user_id: userId,
-            }
+            ...e,
+            status: 'confirmed' as const,
+            assigned_user_id: userId,
+          }
           : e
       );
 
@@ -267,10 +362,10 @@ function appReducer(state: AppState, action: Action): AppState {
       const newEvents = state.events.map((e) =>
         e.id === eventId
           ? {
-              ...e,
-              status: 'rejected' as const,
-              assigned_user_id: null,
-            }
+            ...e,
+            status: 'rejected' as const,
+            assigned_user_id: null,
+          }
           : e
       );
 
@@ -313,7 +408,10 @@ interface AppStoreContextType extends AppState {
   confirmEvent: (eventId: string, userId: string) => void;
   dismissEvent: (eventId: string) => void;
   setMatchEvents: (matchId: string, events: MatchEvent[]) => void;
-  createMatch: (data: { title: string; match_date: string; location: string }) => void;
+  createMatch: (
+    data: Pick<Match, 'title' | 'match_date' | 'location'> & { video_url?: string | null }
+  ) => void;
+  updateMatchVideoUrl: (matchId: string, videoUrl: string | null) => void;
   setMatchStatus: (matchId: string, status: MatchStatus) => void;
   finalizeCheckin: (matchId: string) => void;
   resetDemoData: () => void;
@@ -325,85 +423,509 @@ const AppStoreContext = createContext<AppStoreContextType | null>(null);
 
 const isClient = () => true;
 const isServer = () => false;
-const subscribe = () => () => {};
+const subscribe = () => () => { };
 
 export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, INITIAL_STATE);
+  const stateRef = useRef(state);
+  const skipInitialPersistRef = useRef(true);
   const isHydrated = useSyncExternalStore(subscribe, isClient, isServer);
 
   useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    let savedRole: 'player' | 'admin' | undefined;
+    let savedUserId: string | undefined;
+    let parsedLocal: Partial<AppState> | null = null;
+
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        const parsed = JSON.parse(stored);
-        dispatch({ type: 'HYDRATE', payload: parsed });
+        const parsed = JSON.parse(stored) as Partial<AppState>;
+        parsedLocal = parsed;
+        if (parsed.role === 'player' || parsed.role === 'admin') {
+          savedRole = parsed.role;
+        }
+        if (typeof parsed.currentUserId === 'string' && parsed.currentUserId) {
+          savedUserId = parsed.currentUserId;
+        }
       }
     } catch (e) {
-      console.warn('Failed to hydrate state from localStorage', e);
+      console.warn('Failed to hydrate preferences from localStorage', e);
     }
+
+    if (isSupabaseConfigured && supabase) {
+      if (savedRole || savedUserId) {
+        dispatch({
+          type: 'HYDRATE',
+          payload: {
+            ...(savedRole ? { role: savedRole } : {}),
+            ...(savedUserId ? { currentUserId: savedUserId } : {}),
+          },
+        });
+      }
+
+      fetchLiveStateFromSupabase()
+        .then((liveData) => {
+          if (cancelled || !liveData) return;
+
+          if (liveData.users.length === 0) {
+            const fallbackMatches =
+              liveData.matches.length > 0 ? liveData.matches : INITIAL_STATE.matches;
+            const preferredUserId = savedUserId || stateRef.current.currentUserId;
+            const resolvedUserId = INITIAL_STATE.users.some(
+              (u) => u.id === preferredUserId
+            )
+              ? preferredUserId
+              : (INITIAL_STATE.users[0]?.id ?? stateRef.current.currentUserId);
+
+            dispatch({
+              type: 'HYDRATE',
+              payload: {
+                users: INITIAL_STATE.users,
+                matches: fallbackMatches,
+                attendance:
+                  liveData.attendance.length > 0
+                    ? liveData.attendance
+                    : INITIAL_STATE.attendance,
+                events:
+                  liveData.events.length > 0 ? liveData.events : INITIAL_STATE.events,
+                currentUserId: resolvedUserId,
+              },
+            });
+            return;
+          }
+
+          const preferredUserId = savedUserId || stateRef.current.currentUserId;
+          const resolvedUserId = liveData.users.some((u) => u.id === preferredUserId)
+            ? preferredUserId
+            : (liveData.users[0]?.id ?? stateRef.current.currentUserId);
+
+          dispatch({
+            type: 'HYDRATE',
+            payload: {
+              users: liveData.users,
+              matches: liveData.matches,
+              attendance: liveData.attendance,
+              events: liveData.events,
+              currentUserId: resolvedUserId,
+            },
+          });
+        })
+        .catch(() => { });
+    } else if (parsedLocal) {
+      dispatch({ type: 'HYDRATE', payload: parsedLocal });
+    }
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    if (isHydrated) {
-      try {
+    if (!isHydrated) return;
+    if (skipInitialPersistRef.current) {
+      skipInitialPersistRef.current = false;
+      return;
+    }
+
+    try {
+      if (isSupabaseConfigured) {
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({
+            role: state.role,
+            currentUserId: state.currentUserId,
+          })
+        );
+      } else {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      } catch (e) {
-        console.warn('Failed to save state to localStorage', e);
       }
+    } catch (e) {
+      console.warn('Failed to save state to localStorage', e);
     }
   }, [state, isHydrated]);
 
   const setRole = useCallback((role: 'player' | 'admin') => dispatch({ type: 'SET_ROLE', payload: role }), []);
   const setCurrentUserId = useCallback((id: string) => dispatch({ type: 'SET_CURRENT_USER', payload: id }), []);
-  const toggleVote = useCallback(
-    (matchId: string, userId: string) => dispatch({ type: 'TOGGLE_VOTE', payload: { matchId, userId } }),
-    []
-  );
-  const setCheckin = useCallback(
-    (matchId: string, userId: string, status: CheckinStatus) =>
-      dispatch({ type: 'SET_CHECKIN', payload: { matchId, userId, status } }),
-    []
-  );
-  const updateEvent = useCallback(
-    (eventId: string, updates: Partial<MatchEvent>) =>
-      dispatch({ type: 'UPDATE_EVENT', payload: { eventId, updates } }),
-    []
-  );
-  const confirmEvent = useCallback(
-    (eventId: string, userId: string) =>
-      dispatch({ type: 'CONFIRM_EVENT', payload: { eventId, userId } }),
-    []
-  );
-  const dismissEvent = useCallback(
-    (eventId: string) => dispatch({ type: 'DISMISS_EVENT', payload: { eventId } }),
-    []
-  );
-  const setMatchEvents = useCallback(
-    (matchId: string, events: MatchEvent[]) =>
-      dispatch({ type: 'SET_MATCH_EVENTS', payload: { matchId, events } }),
-    []
-  );
+
+  const toggleVote = useCallback((matchId: string, userId: string) => {
+    const existing = stateRef.current.attendance.find(
+      (a) => a.match_id === matchId && a.user_id === userId
+    );
+    const nextVote: VoteStatus = existing
+      ? existing.vote_status === 'joined'
+        ? 'declined'
+        : 'joined'
+      : 'joined';
+    const id = ensureUuid(existing?.id);
+
+    dispatch({ type: 'TOGGLE_VOTE', payload: { matchId, userId, id } });
+
+    if (isSupabaseConfigured && supabase) {
+      supabase
+        .from('attendance')
+        .upsert(
+          {
+            id,
+            match_id: matchId,
+            user_id: userId,
+            vote_status: nextVote,
+            checkin_status: existing?.checkin_status ?? 'pending',
+          },
+          { onConflict: 'match_id,user_id' }
+        )
+        .then(({ error }) => logSupabaseError('toggleVote', error));
+    }
+  }, []);
+
+  const setCheckin = useCallback((matchId: string, userId: string, status: CheckinStatus) => {
+    const existing = stateRef.current.attendance.find(
+      (a) => a.match_id === matchId && a.user_id === userId
+    );
+    const id = ensureUuid(existing?.id);
+
+    dispatch({ type: 'SET_CHECKIN', payload: { matchId, userId, status, id } });
+
+    if (isSupabaseConfigured && supabase) {
+      supabase
+        .from('attendance')
+        .upsert(
+          {
+            id,
+            match_id: matchId,
+            user_id: userId,
+            vote_status: existing?.vote_status ?? 'joined',
+            checkin_status: status,
+          },
+          { onConflict: 'match_id,user_id' }
+        )
+        .then(({ error }) => logSupabaseError('setCheckin', error));
+    }
+  }, []);
+
+  const updateEvent = useCallback((eventId: string, updates: Partial<MatchEvent>) => {
+    dispatch({ type: 'UPDATE_EVENT', payload: { eventId, updates } });
+
+    if (isSupabaseConfigured && supabase) {
+      const { timestamp_formatted: _ignored, ...dbUpdates } = updates;
+      void _ignored;
+      if (Object.keys(dbUpdates).length > 0) {
+        supabase
+          .from('match_events')
+          .update(dbUpdates)
+          .eq('id', eventId)
+          .then(({ error }) => logSupabaseError('updateEvent', error));
+      }
+    }
+  }, []);
+
+  const confirmEvent = useCallback((eventId: string, userId: string) => {
+    const targetEvent = stateRef.current.events.find((e) => e.id === eventId);
+    if (!targetEvent) return;
+
+    const prevStatus = targetEvent.status;
+    const prevUserId = targetEvent.assigned_user_id;
+    const wasAlreadyConfirmed = prevStatus === 'confirmed';
+
+    if (wasAlreadyConfirmed && prevUserId === userId) {
+      return;
+    }
+
+    const prevUser =
+      wasAlreadyConfirmed && prevUserId && prevUserId !== userId
+        ? stateRef.current.users.find((u) => u.id === prevUserId)
+        : undefined;
+    const nextUser = stateRef.current.users.find((u) => u.id === userId);
+
+    dispatch({ type: 'CONFIRM_EVENT', payload: { eventId, userId } });
+
+    if (isSupabaseConfigured && supabase) {
+      const client = supabase;
+      (async () => {
+        const { error: eventError } = await client
+          .from('match_events')
+          .update({ status: 'confirmed', assigned_user_id: userId })
+          .eq('id', eventId);
+        logSupabaseError('confirmEvent.match_events', eventError);
+
+        const userUpdates: PromiseLike<{ error: unknown }>[] = [];
+        if (prevUser) {
+          userUpdates.push(
+            client
+              .from('users')
+              .update(
+                targetEvent.event_type === 'goal'
+                  ? { total_goals: Math.max(0, prevUser.total_goals - 1) }
+                  : { total_saves: Math.max(0, prevUser.total_saves - 1) }
+              )
+              .eq('id', prevUser.id)
+          );
+        }
+        if (nextUser) {
+          userUpdates.push(
+            client
+              .from('users')
+              .update(
+                targetEvent.event_type === 'goal'
+                  ? { total_goals: nextUser.total_goals + 1 }
+                  : { total_saves: nextUser.total_saves + 1 }
+              )
+              .eq('id', nextUser.id)
+          );
+        }
+
+        if (userUpdates.length > 0) {
+          const results = await Promise.all(userUpdates);
+          results.forEach(({ error }) => logSupabaseError('confirmEvent.users', error));
+        }
+      })();
+    }
+  }, []);
+
+  const dismissEvent = useCallback((eventId: string) => {
+    const targetEvent = stateRef.current.events.find((e) => e.id === eventId);
+    if (!targetEvent) return;
+
+    const wasConfirmed = targetEvent.status === 'confirmed';
+    const prevUserId = targetEvent.assigned_user_id;
+    const prevUser =
+      wasConfirmed && prevUserId
+        ? stateRef.current.users.find((u) => u.id === prevUserId)
+        : undefined;
+
+    dispatch({ type: 'DISMISS_EVENT', payload: { eventId } });
+
+    if (isSupabaseConfigured && supabase) {
+      const client = supabase;
+      (async () => {
+        const { error: eventError } = await client
+          .from('match_events')
+          .update({ status: 'rejected', assigned_user_id: null })
+          .eq('id', eventId);
+        logSupabaseError('dismissEvent.match_events', eventError);
+
+        if (prevUser) {
+          const { error: userError } = await client
+            .from('users')
+            .update(
+              targetEvent.event_type === 'goal'
+                ? { total_goals: Math.max(0, prevUser.total_goals - 1) }
+                : { total_saves: Math.max(0, prevUser.total_saves - 1) }
+            )
+            .eq('id', prevUser.id);
+          logSupabaseError('dismissEvent.users', userError);
+        }
+      })();
+    }
+  }, []);
+
+  const setMatchEvents = useCallback((matchId: string, incomingEvents: MatchEvent[]) => {
+    const normalizedEvents: MatchEvent[] = incomingEvents.map((e) => {
+      const timestampSec = Number(e.timestamp_sec);
+      return {
+        ...e,
+        id: ensureUuid(e.id),
+        match_id: matchId,
+        timestamp_sec: timestampSec,
+        confidence_score: Number(e.confidence_score),
+        timestamp_formatted: e.timestamp_formatted || formatTimestamp(timestampSec),
+      };
+    });
+
+    const confirmedIds = new Set(
+      stateRef.current.events
+        .filter((e) => e.match_id === matchId && e.status === 'confirmed')
+        .map((e) => e.id)
+    );
+    const freshIncoming = normalizedEvents.filter((e) => !confirmedIds.has(e.id));
+
+    dispatch({ type: 'SET_MATCH_EVENTS', payload: { matchId, events: normalizedEvents } });
+
+    if (isSupabaseConfigured && supabase) {
+      const client = supabase;
+      (async () => {
+        const { error: delError } = await client
+          .from('match_events')
+          .delete()
+          .eq('match_id', matchId)
+          .neq('status', 'confirmed');
+        logSupabaseError('setMatchEvents.delete', delError);
+
+        if (!delError && freshIncoming.length > 0) {
+          const rowsToInsert = freshIncoming.map((e) => {
+            const row = toMatchEventRow(e);
+            return {
+              id: row.id,
+              match_id: row.match_id,
+              timestamp_sec: row.timestamp_sec,
+              event_type: row.event_type,
+              assigned_user_id: row.assigned_user_id,
+              confidence_score: row.confidence_score,
+              status: row.status,
+              visual_cue: row.visual_cue ?? null,
+            };
+          });
+          const { error: insError } = await client
+            .from('match_events')
+            .insert(rowsToInsert);
+          logSupabaseError('setMatchEvents.insert', insError);
+        }
+      })();
+    }
+  }, []);
+
   const createMatch = useCallback(
-    (data: { title: string; match_date: string; location: string }) =>
-      dispatch({ type: 'CREATE_MATCH', payload: data }),
+    (data: Pick<Match, 'title' | 'match_date' | 'location'> & { video_url?: string | null }) => {
+      const id = crypto.randomUUID();
+      const created_at = new Date().toISOString();
+      const normalizedVideoUrl = data.video_url?.trim() || null;
+
+      dispatch({
+        type: 'CREATE_MATCH',
+        payload: {
+          id,
+          created_at,
+          title: data.title,
+          match_date: data.match_date,
+          location: data.location,
+          video_url: normalizedVideoUrl,
+        },
+      });
+
+      if (isSupabaseConfigured && supabase) {
+        supabase
+          .from('matches')
+          .insert({
+            id,
+            title: data.title,
+            match_date: data.match_date,
+            location: data.location,
+            status: 'voting',
+            video_url: normalizedVideoUrl,
+            created_at,
+          })
+          .then(({ error }) => logSupabaseError('createMatch', error));
+      }
+    },
     []
   );
-  const setMatchStatus = useCallback(
-    (matchId: string, status: MatchStatus) =>
-      dispatch({ type: 'SET_MATCH_STATUS', payload: { matchId, status } }),
-    []
-  );
-  const finalizeCheckin = useCallback(
-    (matchId: string) => dispatch({ type: 'FINALIZE_CHECKIN', payload: { matchId } }),
-    []
-  );
+
+  const updateMatchVideoUrl = useCallback((matchId: string, videoUrl: string | null) => {
+    const normalizedUrl = videoUrl?.trim() || null;
+    dispatch({
+      type: 'UPDATE_MATCH_VIDEO_URL',
+      payload: { matchId, videoUrl: normalizedUrl },
+    });
+
+    if (isSupabaseConfigured && supabase) {
+      supabase
+        .from('matches')
+        .update({ video_url: normalizedUrl })
+        .eq('id', matchId)
+        .then(({ error }) => {
+          if (error) console.error('[Supabase] updateMatchVideoUrl failed:', error.message);
+        });
+    }
+  }, []);
+
+  const setMatchStatus = useCallback((matchId: string, status: MatchStatus) => {
+    dispatch({ type: 'SET_MATCH_STATUS', payload: { matchId, status } });
+
+    if (isSupabaseConfigured && supabase) {
+      supabase
+        .from('matches')
+        .update({ status })
+        .eq('id', matchId)
+        .then(({ error }) => logSupabaseError('setMatchStatus', error));
+    }
+  }, []);
+
+  const finalizeCheckin = useCallback((matchId: string) => {
+    const noShowUserIds = stateRef.current.attendance
+      .filter(
+        (att) =>
+          att.match_id === matchId &&
+          att.vote_status === 'joined' &&
+          att.checkin_status !== 'present'
+      )
+      .map((att) => att.user_id);
+
+    const affectedUsers = stateRef.current.users.filter((u) =>
+      noShowUserIds.includes(u.id)
+    );
+
+    dispatch({ type: 'FINALIZE_CHECKIN', payload: { matchId } });
+
+    if (isSupabaseConfigured && supabase) {
+      const client = supabase;
+      (async () => {
+        if (noShowUserIds.length > 0) {
+          const { error: attError } = await client
+            .from('attendance')
+            .update({ checkin_status: 'absent_penalized' })
+            .eq('match_id', matchId)
+            .in('user_id', noShowUserIds);
+          logSupabaseError('finalizeCheckin.attendance', attError);
+
+          const userResults = await Promise.all(
+            affectedUsers.map((u) =>
+              client
+                .from('users')
+                .update({ penalty_count: (u.penalty_count || 0) + 1 })
+                .eq('id', u.id)
+            )
+          );
+          userResults.forEach(({ error }) => logSupabaseError('finalizeCheckin.users', error));
+        }
+
+        const { error: matchError } = await client
+          .from('matches')
+          .update({ status: 'review' })
+          .eq('id', matchId);
+        logSupabaseError('finalizeCheckin.matches', matchError);
+      })();
+    }
+  }, []);
+
   const resetDemoData = useCallback(() => {
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch {
       // ignore
     }
-    dispatch({ type: 'RESET_DATA' });
+
+    if (isSupabaseConfigured && supabase) {
+      fetchLiveStateFromSupabase()
+        .then((liveData) => {
+          if (!liveData || liveData.users.length === 0) {
+            dispatch({ type: 'RESET_DATA' });
+            return;
+          }
+
+          dispatch({
+            type: 'HYDRATE',
+            payload: {
+              users: liveData.users,
+              matches:
+                liveData.matches.length > 0 ? liveData.matches : INITIAL_STATE.matches,
+              attendance: liveData.attendance,
+              events: liveData.events,
+              role: 'player',
+              currentUserId: liveData.users[0]?.id ?? INITIAL_STATE.currentUserId,
+            },
+          });
+        })
+        .catch(() => {
+          dispatch({ type: 'RESET_DATA' });
+        });
+    } else {
+      dispatch({ type: 'RESET_DATA' });
+    }
   }, []);
 
   const currentUser = useMemo(() => {
@@ -422,6 +944,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       dismissEvent,
       setMatchEvents,
       createMatch,
+      updateMatchVideoUrl,
       setMatchStatus,
       finalizeCheckin,
       resetDemoData,
@@ -439,6 +962,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       dismissEvent,
       setMatchEvents,
       createMatch,
+      updateMatchVideoUrl,
       setMatchStatus,
       finalizeCheckin,
       resetDemoData,

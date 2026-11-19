@@ -115,10 +115,54 @@ ALTER TABLE attendance ENABLE ROW LEVEL SECURITY;
 ALTER TABLE match_events ENABLE ROW LEVEL SECURITY;
 
 -- Read policies (Permissive read for authenticated & anon clients in development)
+DROP POLICY IF EXISTS "Allow public read users" ON users;
 CREATE POLICY "Allow public read users" ON users FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Allow public read matches" ON matches;
 CREATE POLICY "Allow public read matches" ON matches FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Allow public read attendance" ON attendance;
 CREATE POLICY "Allow public read attendance" ON attendance FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Allow public read match_events" ON match_events;
 CREATE POLICY "Allow public read match_events" ON match_events FOR SELECT USING (true);
+
+-- Write policies (Permissive write for anon client during development/demo mode)
+DROP POLICY IF EXISTS "Allow public insert users" ON users;
+CREATE POLICY "Allow public insert users" ON users FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public update users" ON users;
+CREATE POLICY "Allow public update users" ON users FOR UPDATE USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public delete users" ON users;
+CREATE POLICY "Allow public delete users" ON users FOR DELETE USING (true);
+
+DROP POLICY IF EXISTS "Allow public insert matches" ON matches;
+CREATE POLICY "Allow public insert matches" ON matches FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public update matches" ON matches;
+CREATE POLICY "Allow public update matches" ON matches FOR UPDATE USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public delete matches" ON matches;
+CREATE POLICY "Allow public delete matches" ON matches FOR DELETE USING (true);
+
+DROP POLICY IF EXISTS "Allow public insert attendance" ON attendance;
+CREATE POLICY "Allow public insert attendance" ON attendance FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public update attendance" ON attendance;
+CREATE POLICY "Allow public update attendance" ON attendance FOR UPDATE USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public delete attendance" ON attendance;
+CREATE POLICY "Allow public delete attendance" ON attendance FOR DELETE USING (true);
+
+DROP POLICY IF EXISTS "Allow public insert match_events" ON match_events;
+CREATE POLICY "Allow public insert match_events" ON match_events FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public update match_events" ON match_events;
+CREATE POLICY "Allow public update match_events" ON match_events FOR UPDATE USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public delete match_events" ON match_events;
+CREATE POLICY "Allow public delete match_events" ON match_events FOR DELETE USING (true);
 
 -- NOTE: In production, configure role-based write policies:
 -- Only authenticated users with role='admin' can insert/update matches and match_events.
