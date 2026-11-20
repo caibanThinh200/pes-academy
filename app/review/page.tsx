@@ -29,7 +29,26 @@ import { EventVerificationQueue } from '@/components/review/event-verification-q
 import { ConfirmedHighlightsList } from '@/components/review/confirmed-highlights-list';
 
 const CHUNK_SIZE_SEC = 15 * 60; // 900 seconds (15 minutes)
+const CHUNK_OVERLAP_SEC = 15;
+const CHUNK_STEP_SEC = CHUNK_SIZE_SEC - CHUNK_OVERLAP_SEC; // 885 seconds
 const DURATION_PRESETS = [15, 60, 75, 90] as const;
+
+function buildOverlappingChunks(
+  totalDurationSec: number
+): Array<{ startSec: number; endSec: number }> {
+  const safeDuration = Math.max(1, Math.floor(totalDurationSec));
+  const chunks: Array<{ startSec: number; endSec: number }> = [];
+
+  let start = 0;
+  while (start < safeDuration) {
+    const endSec = Math.min(safeDuration, start + CHUNK_SIZE_SEC);
+    chunks.push({ startSec: start, endSec });
+    if (endSec >= safeDuration) break;
+    start += CHUNK_STEP_SEC;
+  }
+
+  return chunks;
+}
 
 function mergeChunkEventsWithDedup(
   existing: MatchEvent[],
@@ -112,8 +131,8 @@ export default function ReviewPage() {
     pendingEvents.length === 0
       ? null
       : userSelectedEventId && pendingEvents.some((e) => e.id === userSelectedEventId)
-      ? userSelectedEventId
-      : pendingEvents[0].id;
+        ? userSelectedEventId
+        : pendingEvents[0].id;
 
   // YouTube Link & AI Chunk Orchestrator State
   const [videoUrlDraft, setVideoUrlDraft] = React.useState<{
@@ -210,8 +229,8 @@ export default function ReviewPage() {
       isYouTubeUrl(trimmed)
         ? 'YouTube match link connected & saved!'
         : trimmed
-        ? 'Match video link updated!'
-        : 'Video link cleared.',
+          ? 'Match video link updated!'
+          : 'Video link cleared.',
       'success'
     );
   };
@@ -270,13 +289,7 @@ export default function ReviewPage() {
         ? Math.max(1, videoDurationMin) * 60
         : Math.max(60, videoDurationMin * 60);
 
-    const chunks: Array<{ startSec: number; endSec: number }> = [];
-    for (let start = 0; start < totalDurationSec; start += CHUNK_SIZE_SEC) {
-      chunks.push({
-        startSec: start,
-        endSec: Math.min(totalDurationSec, start + CHUNK_SIZE_SEC),
-      });
-    }
+    const chunks = buildOverlappingChunks(totalDurationSec);
 
     const controller = new AbortController();
     scanAbortRef.current = controller;
@@ -397,7 +410,7 @@ export default function ReviewPage() {
               className="gap-1.5 shadow-sm"
             >
               <Sparkles className="h-3.5 w-3.5" />
-              <span>{isYouTubeConnected ? 'Analyze Match AI' : 'Run AI Analysis'}</span>
+              <span>{isYouTubeConnected ? 'Analyze Match' : 'Running Analysis'}</span>
             </Button>
           )}
         </div>
@@ -424,8 +437,8 @@ export default function ReviewPage() {
                 {scanProgress.mode === 'gemini_youtube'
                   ? 'Gemini 2.5 Flash'
                   : isYouTubeConnected
-                  ? 'YouTube + Gemini'
-                  : 'Demo Mode'}
+                    ? 'YouTube + Gemini'
+                    : 'Demo Mode'}
               </span>
             </div>
             <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-background/60">
@@ -486,11 +499,10 @@ export default function ReviewPage() {
                 key={m.id}
                 type="button"
                 onClick={() => handleSelectMatch(m.id)}
-                className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-bold transition-all ${
-                  isSel
+                className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-bold transition-all ${isSel
                     ? 'bg-primary text-primary-foreground shadow-sm'
                     : 'bg-surface border border-border text-muted hover:text-foreground'
-                }`}
+                  }`}
               >
                 {m.title.split(':')[0]}
               </button>
@@ -629,7 +641,8 @@ export default function ReviewPage() {
                       Match Length (15m chunks)
                     </span>
                     <span className="font-mono text-foreground">
-                      {videoDurationMin}m ({Math.ceil(Math.max(1, videoDurationMin) / 15)} chunks)
+                      {videoDurationMin}m (
+                      {buildOverlappingChunks(Math.max(1, videoDurationMin) * 60).length} chunks)
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5">
@@ -638,11 +651,10 @@ export default function ReviewPage() {
                         key={mins}
                         type="button"
                         onClick={() => setVideoDurationMin(mins)}
-                        className={`rounded-lg border px-2 py-1 text-[11px] font-bold transition-colors ${
-                          videoDurationMin === mins
+                        className={`rounded-lg border px-2 py-1 text-[11px] font-bold transition-colors ${videoDurationMin === mins
                             ? 'border-primary bg-primary/15 text-primary'
                             : 'border-border bg-background text-muted hover:text-foreground'
-                        }`}
+                          }`}
                       >
                         {mins}m
                       </button>
@@ -708,11 +720,10 @@ export default function ReviewPage() {
             <button
               type="button"
               onClick={() => setActiveTab('pending')}
-              className={`relative inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
-                activeTab === 'pending'
+              className={`relative inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${activeTab === 'pending'
                   ? 'bg-primary text-primary-foreground shadow-sm'
                   : 'text-muted hover:text-foreground'
-              }`}
+                }`}
             >
               <span>Pending AI Clips</span>
               <Badge
@@ -726,11 +737,10 @@ export default function ReviewPage() {
             <button
               type="button"
               onClick={() => setActiveTab('confirmed')}
-              className={`relative inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
-                activeTab === 'confirmed'
+              className={`relative inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${activeTab === 'confirmed'
                   ? 'bg-primary text-primary-foreground shadow-sm'
                   : 'text-muted hover:text-foreground'
-              }`}
+                }`}
             >
               <span>Confirmed Highlights</span>
               <Badge
