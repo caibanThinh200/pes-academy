@@ -37,7 +37,7 @@ export function EventVerificationQueue({
         </div>
         <h3 className="text-sm font-bold text-foreground">All Clips Verified!</h3>
         <p className="mt-1 text-xs text-muted">
-          No pending detections in the queue. Paste your YouTube match link and run AI Match Analysis to detect goals and goalkeeper saves.
+          No pending detections in the queue. Paste your YouTube match link and run Match Analysis to detect goals and goalkeeper saves.
         </p>
       </div>
     );
@@ -119,20 +119,20 @@ export function EventVerificationQueue({
                     <span className="inline-flex items-center gap-1 rounded-full border border-gold/40 bg-gold/15 px-2 py-0.5 text-[10px] font-bold text-gold">
                       <Sparkles className="h-2.5 w-2.5" />
                       <span>
-                        AI Pick: {jerseyLabel}
+                        Suggested: {jerseyLabel}
                         {suggestedPlayer.name.split(' ')[0]}
                       </span>
                     </span>
                   )}
-                  <span className="text-[11px] text-muted">AI Conf:</span>
+                  <span className="text-[11px] text-muted">Conf:</span>
                   <span
                     className={cn(
                       'text-xs font-extrabold',
                       confidencePct >= 90
                         ? 'text-success'
                         : confidencePct >= 75
-                        ? 'text-gold'
-                        : 'text-muted'
+                          ? 'text-gold'
+                          : 'text-muted'
                     )}
                   >
                     {confidencePct}%
@@ -183,8 +183,8 @@ export function EventVerificationQueue({
                                 <Sparkles className="h-3 w-3" />
                                 <span>
                                   {isGoal
-                                    ? 'AI Suggested Scorer'
-                                    : 'AI Suggested Goalkeeper'}
+                                    ? 'Suggested Scorer'
+                                    : 'Suggested Goalkeeper'}
                                 </span>
                               </div>
                               <p className="truncate text-xs font-bold text-foreground">
@@ -240,13 +240,13 @@ export function EventVerificationQueue({
                                 isAiPick
                                   ? 'border-gold/70 bg-gold/10 shadow-sm'
                                   : isRecommended
-                                  ? 'border-primary/60 bg-primary/10 shadow-sm'
-                                  : 'border-border bg-surface hover:border-primary/40 hover:bg-muted/10'
+                                    ? 'border-primary/60 bg-primary/10 shadow-sm'
+                                    : 'border-border bg-surface hover:border-primary/40 hover:bg-muted/10'
                               )}
                             >
                               {isAiPick && (
                                 <span className="mb-1 rounded-full bg-gold px-1.5 py-0.2 text-[8px] font-black uppercase tracking-wider text-gold-foreground">
-                                  AI Pick
+                                  Suggested
                                 </span>
                               )}
                               <div className="relative mb-1">

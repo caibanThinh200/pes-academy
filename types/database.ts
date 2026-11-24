@@ -8,14 +8,17 @@ export type EventStatus = 'pending_review' | 'confirmed' | 'rejected';
 
 export type User = {
   id: string;
+  username: string | null;
   name: string;
   avatar_url: string | null;
   role: UserRole;
   position: Position;
   jersey_number: number | null;
   total_goals: number;
+  total_assists: number;
   total_saves: number;
   penalty_count: number;
+  must_change_password: boolean;
   created_at?: string;
 };
 
@@ -60,10 +63,16 @@ export interface Database {
     Tables: {
       users: {
         Row: User;
-        Insert: Omit<User, 'id' | 'created_at' | 'jersey_number'> & {
+        Insert: Omit<
+          User,
+          'id' | 'created_at' | 'jersey_number' | 'username' | 'must_change_password' | 'total_assists'
+        > & {
           id?: string;
           created_at?: string;
           jersey_number?: number | null;
+          username?: string | null;
+          must_change_password?: boolean;
+          total_assists?: number;
         };
         Update: Partial<User>;
         Relationships: [];
@@ -88,7 +97,16 @@ export interface Database {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      is_admin: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
+      clear_must_change_password: {
+        Args: Record<string, never>;
+        Returns: undefined;
+      };
+    };
     Enums: {
       user_role: UserRole;
       position: Position;

@@ -4,7 +4,6 @@ import * as React from 'react';
 import Link from 'next/link';
 import { Crest } from './crest';
 import { ThemeToggle } from './theme-toggle';
-import { RoleSwitcher } from './role-switcher';
 
 export function AppHeader() {
   return (
@@ -29,7 +28,6 @@ export function AppHeader() {
 
         {/* Right: Actions */}
         <div className="flex items-center gap-2">
-          <RoleSwitcher />
           <ThemeToggle />
         </div>
       </div>

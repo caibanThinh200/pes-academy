@@ -21,6 +21,7 @@ import { MatchEvent } from '@/types/database';
 import { formatMatchDate, formatTimestamp, isYouTubeUrl } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import {
   MatchVideoPlayer,
   MatchVideoPlayerHandle,
@@ -222,6 +223,10 @@ export default function ReviewPage() {
     e.preventDefault();
     if (!selectedMatch) return;
     const trimmed = videoUrlInput.trim();
+    if (trimmed && !isYouTubeUrl(trimmed)) {
+      showToast('Please enter a valid YouTube video URL.', 'dismiss');
+      return;
+    }
     updateMatchVideoUrl(selectedMatch.id, trimmed || null);
     setVideoUrlDraft(null);
     setIsEditingVideoUrl(false);
@@ -280,9 +285,19 @@ export default function ReviewPage() {
     scanAbortRef.current?.abort();
   };
 
-  // 15-Minute Chunked Gemini 2.5 Flash Match Analysis Orchestrator
+  // 15-Minute Chunked Gemini Flash Match Analysis Orchestrator
   const handleRunAiAnalysis = async () => {
     if (!selectedMatch || isScanning) return;
+
+    if (!isYouTubeUrl(selectedMatch.video_url)) {
+      setVideoUrlDraft({
+        matchId: selectedMatch.id,
+        value: selectedMatch.video_url ?? '',
+      });
+      setIsEditingVideoUrl(true);
+      showToast('Please attach a valid YouTube video before running match analysis.', 'dismiss');
+      return;
+    }
 
     const totalDurationSec =
       isYouTubeConnected || videoDurationMin > 15
@@ -334,7 +349,10 @@ export default function ReviewPage() {
           }),
         });
 
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data?.success === false) {
+          throw new Error(data?.error || 'Match analysis failed.');
+        }
         processedChunks += 1;
         if (data?.mode) {
           detectedMode = data.mode;
@@ -353,22 +371,26 @@ export default function ReviewPage() {
       }
 
       if (controller.signal.aborted) {
-        const msg = `AI Scan stopped after ${processedChunks}/${chunks.length} chunks: ${accumulatedEvents.length} clips saved.`;
+        const msg = `Match Scan stopped after ${processedChunks}/${chunks.length} chunks: ${accumulatedEvents.length} clips saved.`;
         setScanSummary(msg);
         showToast(msg, 'info');
       } else {
-        const msg = `AI Analysis Complete: ${accumulatedEvents.length} clips detected across ${chunks.length} chunk${chunks.length > 1 ? 's' : ''}`;
+        const msg = `Match Analysis Complete: ${accumulatedEvents.length} clips detected across ${chunks.length} chunk${chunks.length > 1 ? 's' : ''}`;
         setScanSummary(msg);
         showToast(msg, accumulatedEvents.length > 0 ? 'success' : 'info');
       }
     } catch (err) {
       if ((err as Error)?.name === 'AbortError') {
-        const msg = `AI Scan stopped after ${processedChunks}/${chunks.length} chunks: ${accumulatedEvents.length} clips saved.`;
+        const msg = `Match Scan stopped after ${processedChunks}/${chunks.length} chunks: ${accumulatedEvents.length} clips saved.`;
         setScanSummary(msg);
         showToast(msg, 'info');
       } else {
         console.error('Scan error:', err);
-        showToast('AI analysis encountered an error during chunk processing.', 'dismiss');
+        const message =
+          err instanceof Error && err.message
+            ? err.message
+            : 'Analysis failed. Please try again.';
+        showToast(message, 'dismiss');
       }
     } finally {
       scanAbortRef.current = null;
@@ -386,34 +408,42 @@ export default function ReviewPage() {
             Result
           </h1>
           <p className="text-xs text-muted">
-            Match highlights, AI clip verification & confirmed stats
+            Match highlights, clip verification & confirmed stats
           </p>
         </div>
 
         {/* AI Scan Action / Stop Button */}
-        <div className="flex items-center gap-2">
-          {isScanning ? (
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={handleStopScan}
-              className="gap-1.5 shadow-sm"
-            >
-              <Square className="h-3.5 w-3.5 fill-current" />
-              <span>Stop Scan</span>
-            </Button>
-          ) : (
-            <Button
-              variant="gold"
-              size="sm"
-              onClick={handleRunAiAnalysis}
-              className="gap-1.5 shadow-sm"
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              <span>{isYouTubeConnected ? 'Analyze Match' : 'Running Analysis'}</span>
-            </Button>
-          )}
-        </div>
+        {matches.length > 0 && (
+          <div className="flex items-center gap-2">
+            {isScanning ? (
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={handleStopScan}
+                className="gap-1.5 shadow-sm"
+              >
+                <Square className="h-3.5 w-3.5 fill-current" />
+                <span>Stop Scan</span>
+              </Button>
+            ) : (
+              <Button
+                variant="gold"
+                size="sm"
+                onClick={handleRunAiAnalysis}
+                disabled={isScanning || !isYouTubeConnected}
+                title={
+                  !isYouTubeConnected
+                    ? 'Add a YouTube match link to enable analysis'
+                    : undefined
+                }
+                className="gap-1.5 shadow-sm"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                <span>Analyze Match</span>
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Live Chunked Scan Progress Banner */}
@@ -435,9 +465,9 @@ export default function ReviewPage() {
               </div>
               <span className="text-[10px] font-semibold uppercase tracking-wider text-gold">
                 {scanProgress.mode === 'gemini_youtube'
-                  ? 'Gemini 2.5 Flash'
+                  ? 'Video Scanner'
                   : isYouTubeConnected
-                    ? 'YouTube + Gemini'
+                    ? 'YouTube Match Scan'
                     : 'Demo Mode'}
               </span>
             </div>
@@ -500,8 +530,8 @@ export default function ReviewPage() {
                 type="button"
                 onClick={() => handleSelectMatch(m.id)}
                 className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-bold transition-all ${isSel
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'bg-surface border border-border text-muted hover:text-foreground'
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'bg-surface border border-border text-muted hover:text-foreground'
                   }`}
               >
                 {m.title.split(':')[0]}
@@ -573,7 +603,7 @@ export default function ReviewPage() {
                 <div className="flex items-center gap-2">
                   <Link2 className="h-3.5 w-3.5 text-primary" />
                   <span className="text-xs font-bold text-foreground">
-                    YouTube Match Footage & AI Context
+                    YouTube Match Footage & Match Context
                   </span>
                   {isYouTubeConnected ? (
                     <span className="inline-flex items-center gap-1 rounded-full border border-success/40 bg-success/15 px-2 py-0.5 text-[10px] font-bold text-success">
@@ -633,7 +663,7 @@ export default function ReviewPage() {
               )}
 
               {/* Duration Presets & Team/Kit Hint */}
-              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-2.5">
                 <div className="space-y-1">
                   <div className="flex items-center justify-between text-[11px] font-semibold text-muted">
                     <span className="flex items-center gap-1">
@@ -645,15 +675,15 @@ export default function ReviewPage() {
                       {buildOverlappingChunks(Math.max(1, videoDurationMin) * 60).length} chunks)
                     </span>
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     {DURATION_PRESETS.map((mins) => (
                       <button
                         key={mins}
                         type="button"
                         onClick={() => setVideoDurationMin(mins)}
                         className={`rounded-lg border px-2 py-1 text-[11px] font-bold transition-colors ${videoDurationMin === mins
-                            ? 'border-primary bg-primary/15 text-primary'
-                            : 'border-border bg-background text-muted hover:text-foreground'
+                          ? 'border-primary bg-primary/15 text-primary'
+                          : 'border-border bg-background text-muted hover:text-foreground'
                           }`}
                       >
                         {mins}m
@@ -712,82 +742,96 @@ export default function ReviewPage() {
         />
       )}
 
-      {/* Verification Queue Section */}
-      <div className="space-y-3 pt-1">
-        {/* Filter Navigation Tabs */}
-        <div className="flex items-center justify-between border-b border-border/60 pb-2">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setActiveTab('pending')}
-              className={`relative inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${activeTab === 'pending'
+      {/* Verification Queue Section or Empty State */}
+      {matches.length === 0 ? (
+        <Card className="p-8 text-center border-dashed border-2 border-border/80 bg-surface/40">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary mb-3">
+            <Video className="h-6 w-6" />
+          </div>
+          <h3 className="text-base font-bold text-foreground">No matches yet</h3>
+          <p className="text-xs text-muted mt-1 max-w-xs mx-auto">
+            {isAdmin
+              ? 'Create a match from the Matches tab to add footage and verify highlights.'
+              : 'Match highlights and detected clips will appear here after your first fixture.'}
+          </p>
+        </Card>
+      ) : (
+        <div className="space-y-3 pt-1">
+          {/* Filter Navigation Tabs */}
+          <div className="flex items-center justify-between border-b border-border/60 pb-2">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveTab('pending')}
+                className={`relative inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${activeTab === 'pending'
                   ? 'bg-primary text-primary-foreground shadow-sm'
                   : 'text-muted hover:text-foreground'
-                }`}
-            >
-              <span>Pending AI Clips</span>
-              <Badge
-                variant={activeTab === 'pending' ? 'gold' : 'outline'}
-                className="ml-0.5 px-1.5 py-0 text-[10px]"
+                  }`}
               >
-                {pendingEvents.length}
-              </Badge>
-            </button>
+                <span>Pending Clips</span>
+                <Badge
+                  variant={activeTab === 'pending' ? 'gold' : 'outline'}
+                  className="ml-0.5 px-1.5 py-0 text-[10px]"
+                >
+                  {pendingEvents.length}
+                </Badge>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveTab('confirmed')}
-              className={`relative inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${activeTab === 'confirmed'
+              <button
+                type="button"
+                onClick={() => setActiveTab('confirmed')}
+                className={`relative inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${activeTab === 'confirmed'
                   ? 'bg-primary text-primary-foreground shadow-sm'
                   : 'text-muted hover:text-foreground'
-                }`}
-            >
-              <span>Confirmed Highlights</span>
-              <Badge
-                variant={activeTab === 'confirmed' ? 'gold' : 'outline'}
-                className="ml-0.5 px-1.5 py-0 text-[10px]"
+                  }`}
               >
-                {confirmedEvents.length}
-              </Badge>
-            </button>
+                <span>Confirmed Highlights</span>
+                <Badge
+                  variant={activeTab === 'confirmed' ? 'gold' : 'outline'}
+                  className="ml-0.5 px-1.5 py-0 text-[10px]"
+                >
+                  {confirmedEvents.length}
+                </Badge>
+              </button>
+            </div>
+
+            {!isAdmin && (
+              <span className="hidden sm:inline-block text-[11px] text-muted font-medium">
+                Admins verify
+              </span>
+            )}
           </div>
 
-          {!isAdmin && (
-            <span className="hidden sm:inline-block text-[11px] text-muted font-medium">
-              Switch role to Admin to verify
-            </span>
+          {/* Tab Content */}
+          {activeTab === 'pending' ? (
+            <div className="space-y-2">
+              {!isAdmin && (
+                <div className="flex items-center gap-2 rounded-xl border border-gold/30 bg-gold/10 p-2.5 text-xs text-foreground">
+                  <Video className="h-4 w-4 text-gold shrink-0" />
+                  <span>
+                    Tap clips to inspect video footage. Only admins can approve goals & saves.
+                  </span>
+                </div>
+              )}
+              <EventVerificationQueue
+                events={pendingEvents}
+                presentPlayers={presentPlayers}
+                activeEventId={activeEventId}
+                isAdmin={isAdmin}
+                onSelectEvent={seekToEvent}
+                onConfirmEvent={handleConfirmEvent}
+                onDismissEvent={handleDismissEvent}
+              />
+            </div>
+          ) : (
+            <ConfirmedHighlightsList
+              events={confirmedEvents}
+              users={users}
+              onSeekEvent={seekToEvent}
+            />
           )}
         </div>
-
-        {/* Tab Content */}
-        {activeTab === 'pending' ? (
-          <div className="space-y-2">
-            {!isAdmin && (
-              <div className="flex items-center gap-2 rounded-xl border border-gold/30 bg-gold/10 p-2.5 text-xs text-foreground">
-                <Video className="h-4 w-4 text-gold shrink-0" />
-                <span>
-                  Tap clips to inspect video footage. Switch to <strong>Admin</strong> in the header to approve goals & saves.
-                </span>
-              </div>
-            )}
-            <EventVerificationQueue
-              events={pendingEvents}
-              presentPlayers={presentPlayers}
-              activeEventId={activeEventId}
-              isAdmin={isAdmin}
-              onSelectEvent={seekToEvent}
-              onConfirmEvent={handleConfirmEvent}
-              onDismissEvent={handleDismissEvent}
-            />
-          </div>
-        ) : (
-          <ConfirmedHighlightsList
-            events={confirmedEvents}
-            users={users}
-            onSeekEvent={seekToEvent}
-          />
-        )}
-      </div>
+      )}
     </div>
   );
 }

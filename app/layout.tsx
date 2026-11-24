@@ -13,7 +13,7 @@ const manrope = Manrope({
 
 export const metadata: Metadata = {
   title: 'PES Academy',
-  description: 'Weekly football academy management, pitch-side check-ins, and AI video tracking.',
+  description: 'Weekly football academy management, pitch-side check-ins, and video highlight tracking.',
   icons: {
     icon: [
       { url: '/icon.svg', type: 'image/svg+xml' },

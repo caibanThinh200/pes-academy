@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'PES Academy',
     short_name: 'PES Academy',
-    description: 'Weekly football academy management, pitch-side check-ins, and AI video tracking.',
+    description: 'Weekly football academy management, pitch-side check-ins, and video highlight tracking.',
     start_url: '/',
     scope: '/',
     display: 'standalone',

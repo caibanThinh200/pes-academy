@@ -23,6 +23,7 @@ import {
 import { INITIAL_USERS, INITIAL_MATCHES, INITIAL_ATTENDANCE, INITIAL_EVENTS } from './mock-data';
 import { supabase, isSupabaseConfigured } from './supabase';
 import { formatTimestamp } from './utils';
+import { logout } from '@/app/actions/auth';
 
 interface AppState {
   users: User[];
@@ -35,8 +36,6 @@ interface AppState {
 
 type Action =
   | { type: 'HYDRATE'; payload: Partial<AppState> }
-  | { type: 'SET_ROLE'; payload: 'player' | 'admin' }
-  | { type: 'SET_CURRENT_USER'; payload: string }
   | { type: 'TOGGLE_VOTE'; payload: { matchId: string; userId: string; id: string } }
   | { type: 'SET_CHECKIN'; payload: { matchId: string; userId: string; status: CheckinStatus; id: string } }
   | { type: 'CREATE_MATCH'; payload: { id: string; created_at: string; title: string; match_date: string; location: string; video_url?: string | null } }
@@ -49,16 +48,21 @@ type Action =
   | { type: 'SET_MATCH_EVENTS'; payload: { matchId: string; events: MatchEvent[] } }
   | { type: 'RESET_DATA' };
 
+const DEFAULT_OFFLINE_USER =
+  INITIAL_USERS.find((u) => u.role === 'admin') ?? INITIAL_USERS[0];
+
 const INITIAL_STATE: AppState = {
   users: INITIAL_USERS,
   matches: INITIAL_MATCHES,
   attendance: INITIAL_ATTENDANCE,
   events: INITIAL_EVENTS,
-  currentUserId: INITIAL_USERS[0]?.id || '00000000-0000-0000-0000-000000000001',
-  role: 'player',
+  currentUserId: isSupabaseConfigured
+    ? ''
+    : (DEFAULT_OFFLINE_USER?.id ?? '00000000-0000-0000-0000-000000000027'),
+  role: isSupabaseConfigured ? 'player' : (DEFAULT_OFFLINE_USER?.role ?? 'admin'),
 };
 
-const STORAGE_KEY = 'pes_academy_store_v3';
+const STORAGE_KEY = 'pes_academy_store_v4';
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function ensureUuid(id?: string): string {
@@ -90,7 +94,7 @@ async function fetchLiveStateFromSupabase(): Promise<{
 
   try {
     const [usersRes, matchesRes, attendanceRes, eventsRes] = await Promise.all([
-      supabase.from('users').select('*').order('jersey_number', { ascending: true }),
+      supabase.from('users').select('*').order('name', { ascending: true }),
       supabase.from('matches').select('*').order('match_date', { ascending: false }),
       supabase.from('attendance').select('*'),
       supabase.from('match_events').select('*').order('timestamp_sec', { ascending: true }),
@@ -132,12 +136,6 @@ function appReducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'HYDRATE':
       return { ...state, ...action.payload };
-
-    case 'SET_ROLE':
-      return { ...state, role: action.payload };
-
-    case 'SET_CURRENT_USER':
-      return { ...state, currentUserId: action.payload };
 
     case 'TOGGLE_VOTE': {
       const { matchId, userId, id } = action.payload;
@@ -400,8 +398,6 @@ function appReducer(state: AppState, action: Action): AppState {
 }
 
 interface AppStoreContextType extends AppState {
-  setRole: (role: 'player' | 'admin') => void;
-  setCurrentUserId: (id: string) => void;
   toggleVote: (matchId: string, userId: string) => void;
   setCheckin: (matchId: string, userId: string, status: CheckinStatus) => void;
   updateEvent: (eventId: string, updates: Partial<MatchEvent>) => void;
@@ -415,6 +411,7 @@ interface AppStoreContextType extends AppState {
   setMatchStatus: (matchId: string, status: MatchStatus) => void;
   finalizeCheckin: (matchId: string) => void;
   resetDemoData: () => void;
+  signOut: () => Promise<void>;
   currentUser: User | undefined;
   isHydrated: boolean;
 }
@@ -438,87 +435,93 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
 
-    let savedRole: 'player' | 'admin' | undefined;
-    let savedUserId: string | undefined;
-    let parsedLocal: Partial<AppState> | null = null;
-
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as Partial<AppState>;
-        parsedLocal = parsed;
-        if (parsed.role === 'player' || parsed.role === 'admin') {
-          savedRole = parsed.role;
-        }
-        if (typeof parsed.currentUserId === 'string' && parsed.currentUserId) {
-          savedUserId = parsed.currentUserId;
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to hydrate preferences from localStorage', e);
-    }
-
     if (isSupabaseConfigured && supabase) {
-      if (savedRole || savedUserId) {
-        dispatch({
-          type: 'HYDRATE',
-          payload: {
-            ...(savedRole ? { role: savedRole } : {}),
-            ...(savedUserId ? { currentUserId: savedUserId } : {}),
-          },
-        });
-      }
+      const client = supabase;
+      (async () => {
+        const {
+          data: { user },
+        } = await client.auth.getUser();
+        if (cancelled) return;
 
-      fetchLiveStateFromSupabase()
-        .then((liveData) => {
-          if (cancelled || !liveData) return;
-
-          if (liveData.users.length === 0) {
-            const fallbackMatches =
-              liveData.matches.length > 0 ? liveData.matches : INITIAL_STATE.matches;
-            const preferredUserId = savedUserId || stateRef.current.currentUserId;
-            const resolvedUserId = INITIAL_STATE.users.some(
-              (u) => u.id === preferredUserId
-            )
-              ? preferredUserId
-              : (INITIAL_STATE.users[0]?.id ?? stateRef.current.currentUserId);
-
-            dispatch({
-              type: 'HYDRATE',
-              payload: {
-                users: INITIAL_STATE.users,
-                matches: fallbackMatches,
-                attendance:
-                  liveData.attendance.length > 0
-                    ? liveData.attendance
-                    : INITIAL_STATE.attendance,
-                events:
-                  liveData.events.length > 0 ? liveData.events : INITIAL_STATE.events,
-                currentUserId: resolvedUserId,
-              },
-            });
-            return;
-          }
-
-          const preferredUserId = savedUserId || stateRef.current.currentUserId;
-          const resolvedUserId = liveData.users.some((u) => u.id === preferredUserId)
-            ? preferredUserId
-            : (liveData.users[0]?.id ?? stateRef.current.currentUserId);
-
+        if (!user) {
           dispatch({
             type: 'HYDRATE',
             payload: {
-              users: liveData.users,
-              matches: liveData.matches,
-              attendance: liveData.attendance,
-              events: liveData.events,
-              currentUserId: resolvedUserId,
+              currentUserId: '',
+              role: 'player',
             },
           });
-        })
-        .catch(() => { });
-    } else if (parsedLocal) {
-      dispatch({ type: 'HYDRATE', payload: parsedLocal });
+          return;
+        }
+
+        const liveData = await fetchLiveStateFromSupabase();
+        if (cancelled) return;
+
+        if (!liveData) {
+          dispatch({
+            type: 'HYDRATE',
+            payload: {
+              currentUserId: user.id,
+              role: 'player',
+            },
+          });
+          return;
+        }
+
+        const resolvedUsers =
+          liveData.users.length > 0 ? liveData.users : INITIAL_STATE.users;
+        const resolvedMatches =
+          liveData.users.length === 0 && liveData.matches.length === 0
+            ? INITIAL_STATE.matches
+            : liveData.matches;
+        const resolvedAttendance =
+          liveData.users.length === 0 && liveData.attendance.length === 0
+            ? INITIAL_STATE.attendance
+            : liveData.attendance;
+        const resolvedEvents =
+          liveData.users.length === 0 && liveData.events.length === 0
+            ? INITIAL_STATE.events
+            : liveData.events;
+
+        const resolvedRole =
+          resolvedUsers.find((u) => u.id === user.id)?.role ?? 'player';
+
+        dispatch({
+          type: 'HYDRATE',
+          payload: {
+            users: resolvedUsers,
+            matches: resolvedMatches,
+            attendance: resolvedAttendance,
+            events: resolvedEvents,
+            currentUserId: user.id,
+            role: resolvedRole,
+          },
+        });
+      })().catch(() => {});
+    } else {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored) as Partial<AppState>;
+          const hydratedUsers =
+            Array.isArray(parsed.users) && parsed.users.length > 0
+              ? parsed.users
+              : INITIAL_USERS;
+          const fallbackUser =
+            hydratedUsers.find((u) => u.role === 'admin') ?? hydratedUsers[0];
+          dispatch({
+            type: 'HYDRATE',
+            payload: {
+              ...parsed,
+              users: hydratedUsers,
+              currentUserId: fallbackUser?.id ?? INITIAL_STATE.currentUserId,
+              role: fallbackUser?.role ?? 'admin',
+            },
+          });
+        }
+      } catch (e) {
+        console.warn('Failed to hydrate state from localStorage', e);
+      }
     }
 
     return () => {
@@ -527,31 +530,18 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!isHydrated) return;
+    if (!isHydrated || isSupabaseConfigured) return;
     if (skipInitialPersistRef.current) {
       skipInitialPersistRef.current = false;
       return;
     }
 
     try {
-      if (isSupabaseConfigured) {
-        localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify({
-            role: state.role,
-            currentUserId: state.currentUserId,
-          })
-        );
-      } else {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (e) {
       console.warn('Failed to save state to localStorage', e);
     }
   }, [state, isHydrated]);
-
-  const setRole = useCallback((role: 'player' | 'admin') => dispatch({ type: 'SET_ROLE', payload: role }), []);
-  const setCurrentUserId = useCallback((id: string) => dispatch({ type: 'SET_CURRENT_USER', payload: id }), []);
 
   const toggleVote = useCallback((matchId: string, userId: string) => {
     const existing = stateRef.current.attendance.find(
@@ -900,12 +890,17 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (isSupabaseConfigured && supabase) {
-      fetchLiveStateFromSupabase()
-        .then((liveData) => {
+      const client = supabase;
+      Promise.all([client.auth.getUser(), fetchLiveStateFromSupabase()])
+        .then(([{ data: { user } }, liveData]) => {
           if (!liveData || liveData.users.length === 0) {
             dispatch({ type: 'RESET_DATA' });
             return;
           }
+
+          const sessionUserId = user?.id ?? stateRef.current.currentUserId;
+          const sessionRole =
+            liveData.users.find((u) => u.id === sessionUserId)?.role ?? 'player';
 
           dispatch({
             type: 'HYDRATE',
@@ -915,8 +910,8 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
                 liveData.matches.length > 0 ? liveData.matches : INITIAL_STATE.matches,
               attendance: liveData.attendance,
               events: liveData.events,
-              role: 'player',
-              currentUserId: liveData.users[0]?.id ?? INITIAL_STATE.currentUserId,
+              role: sessionRole,
+              currentUserId: sessionUserId,
             },
           });
         })
@@ -928,15 +923,49 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const signOut = useCallback(async () => {
+    try {
+      await logout();
+    } catch {
+      // ignore server action errors during sign-out cleanup
+    }
+    try {
+      await supabase?.auth.signOut({ scope: 'local' });
+    } catch {
+      // ignore
+    }
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+    try {
+      if (typeof window !== 'undefined' && 'caches' in window) {
+        const keys = await window.caches.keys();
+        await Promise.all(keys.map((key) => window.caches.delete(key)));
+      }
+    } catch {
+      // ignore
+    }
+    if (typeof window !== 'undefined') {
+      window.location.assign('/login');
+    }
+  }, []);
+
   const currentUser = useMemo(() => {
-    return state.users.find((u) => u.id === state.currentUserId) || state.users[0];
+    if (isSupabaseConfigured) {
+      return state.users.find((u) => u.id === state.currentUserId);
+    }
+    return (
+      state.users.find((u) => u.id === state.currentUserId) ||
+      state.users.find((u) => u.role === 'admin') ||
+      state.users[0]
+    );
   }, [state.users, state.currentUserId]);
 
   const value = useMemo(
     () => ({
       ...state,
-      setRole,
-      setCurrentUserId,
       toggleVote,
       setCheckin,
       updateEvent,
@@ -948,13 +977,12 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       setMatchStatus,
       finalizeCheckin,
       resetDemoData,
+      signOut,
       currentUser,
       isHydrated,
     }),
     [
       state,
-      setRole,
-      setCurrentUserId,
       toggleVote,
       setCheckin,
       updateEvent,
@@ -966,6 +994,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       setMatchStatus,
       finalizeCheckin,
       resetDemoData,
+      signOut,
       currentUser,
       isHydrated,
     ]

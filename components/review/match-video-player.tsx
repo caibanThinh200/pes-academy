@@ -525,7 +525,7 @@ export function MatchVideoPlayer({
           <div className="flex items-center justify-between text-[11px] font-semibold text-muted">
             <span className="font-mono">{formatTimestamp(currentTime)}</span>
             <span className="text-[10px] uppercase tracking-wider text-muted/80">
-              Interactive AI Scrubber
+              Interactive Timeline Scrubber
             </span>
             <span className="font-mono">{formatTimestamp(timelineDuration)}</span>
           </div>

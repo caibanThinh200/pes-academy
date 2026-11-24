@@ -10,6 +10,7 @@ import {
   Medal,
   CheckCircle2,
   Info,
+  Handshake,
 } from 'lucide-react';
 import { FootballIcon } from '@/components/icons/football';
 import { useAppStore } from '@/lib/store';
@@ -20,7 +21,7 @@ import { JerseyNumber } from '@/components/ui/jersey-number';
 import { cn } from '@/lib/utils';
 import { User } from '@/types/database';
 
-type LeaderboardTab = 'scorers' | 'saves' | 'penalties';
+type LeaderboardTab = 'scorers' | 'playmakers' | 'saves' | 'penalties';
 
 export default function LeaderboardPage() {
   const { users, currentUserId } = useAppStore();
@@ -32,6 +33,15 @@ export default function LeaderboardPage() {
     return [...users].sort((a, b) => {
       if (b.total_goals !== a.total_goals) return b.total_goals - a.total_goals;
       if (a.penalty_count !== b.penalty_count) return a.penalty_count - b.penalty_count;
+      return a.name.localeCompare(b.name);
+    });
+  }, [users]);
+
+  // Sorted list for Playmakers (Assists)
+  const playmakers = React.useMemo(() => {
+    return [...users].sort((a, b) => {
+      if (b.total_assists !== a.total_assists) return b.total_assists - a.total_assists;
+      if (b.total_goals !== a.total_goals) return b.total_goals - a.total_goals;
       return a.name.localeCompare(b.name);
     });
   }, [users]);
@@ -63,8 +73,8 @@ export default function LeaderboardPage() {
       transition: { duration: 0.25, ease: 'easeOut' as const },
     };
 
-  // Render Podium for Top 3 (Scorers or Saves)
-  const renderPodium = (rankedList: User[], metric: 'goals' | 'saves') => {
+  // Render Podium for Top 3 (Scorers, Playmakers, or Saves)
+  const renderPodium = (rankedList: User[], metric: 'goals' | 'assists' | 'saves') => {
     if (rankedList.length < 3) return null;
     const first = rankedList[0];
     const second = rankedList[1];
@@ -92,8 +102,18 @@ export default function LeaderboardPage() {
         <div className="grid grid-cols-3 gap-2.5 items-end pt-2">
           {podiumSlots.map(({ player, rank, medal, color }) => {
             const isFirst = rank === 1;
-            const score = metric === 'goals' ? player.total_goals : player.total_saves;
-            const label = metric === 'goals' ? 'goals' : 'saves';
+            const score =
+              metric === 'goals'
+                ? player.total_goals
+                : metric === 'assists'
+                  ? player.total_assists
+                  : player.total_saves;
+            const label =
+              metric === 'goals'
+                ? score === 1 ? 'goal' : 'goals'
+                : metric === 'assists'
+                  ? score === 1 ? 'assist' : 'assists'
+                  : score === 1 ? 'save' : 'saves';
 
             return (
               <div
@@ -157,12 +177,12 @@ export default function LeaderboardPage() {
       </div>
 
       {/* Filter Tabs with animated indicator */}
-      <div className="flex rounded-2xl border border-border bg-surface p-1 shadow-sm">
+      <div className="grid grid-cols-4 rounded-2xl border border-border bg-surface p-1 shadow-sm">
         <button
           type="button"
           onClick={() => setActiveTab('scorers')}
           className={cn(
-            'relative flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold transition-colors',
+            'relative flex min-w-0 flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 rounded-xl px-1 py-1.5 sm:py-2 text-[11px] font-bold whitespace-nowrap transition-colors',
             activeTab === 'scorers'
               ? 'text-foreground'
               : 'text-muted hover:text-foreground'
@@ -175,15 +195,36 @@ export default function LeaderboardPage() {
               transition={{ type: 'spring', stiffness: 500, damping: 35 }}
             />
           )}
-          <FootballIcon className="relative z-10 h-3.5 w-3.5 text-gold" />
-          <span className="relative z-10">Top Scorers</span>
+          <FootballIcon className="relative z-10 h-3.5 w-3.5 shrink-0 text-gold" />
+          <span className="relative z-10">Scorers</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('playmakers')}
+          className={cn(
+            'relative flex min-w-0 flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 rounded-xl px-1 py-1.5 sm:py-2 text-[11px] font-bold whitespace-nowrap transition-colors',
+            activeTab === 'playmakers'
+              ? 'text-foreground'
+              : 'text-muted hover:text-foreground'
+          )}
+        >
+          {activeTab === 'playmakers' && (
+            <motion.div
+              layoutId="leaderboard-tab-pill"
+              className="absolute inset-0 rounded-xl bg-violet-500/15 border border-violet-500/35 shadow-xs"
+              transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+            />
+          )}
+          <Handshake className="relative z-10 h-3.5 w-3.5 shrink-0 text-violet-500" />
+          <span className="relative z-10">Playmaker</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('saves')}
           className={cn(
-            'relative flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold transition-colors',
+            'relative flex min-w-0 flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 rounded-xl px-1 py-1.5 sm:py-2 text-[11px] font-bold whitespace-nowrap transition-colors',
             activeTab === 'saves'
               ? 'text-foreground'
               : 'text-muted hover:text-foreground'
@@ -196,15 +237,15 @@ export default function LeaderboardPage() {
               transition={{ type: 'spring', stiffness: 500, damping: 35 }}
             />
           )}
-          <Award className="relative z-10 h-3.5 w-3.5 text-primary" />
-          <span className="relative z-10">Golden Glove</span>
+          <Award className="relative z-10 h-3.5 w-3.5 shrink-0 text-primary" />
+          <span className="relative z-10">Glove</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('penalties')}
           className={cn(
-            'relative flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold transition-colors',
+            'relative flex min-w-0 flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 rounded-xl px-1 py-1.5 sm:py-2 text-[11px] font-bold whitespace-nowrap transition-colors',
             activeTab === 'penalties'
               ? 'text-foreground'
               : 'text-muted hover:text-foreground'
@@ -217,8 +258,8 @@ export default function LeaderboardPage() {
               transition={{ type: 'spring', stiffness: 500, damping: 35 }}
             />
           )}
-          <ShieldAlert className="relative z-10 h-3.5 w-3.5 text-danger" />
-          <span className="relative z-10">Penalty Board</span>
+          <ShieldAlert className="relative z-10 h-3.5 w-3.5 shrink-0 text-danger" />
+          <span className="relative z-10">Penalties</span>
         </button>
       </div>
 
@@ -305,6 +346,102 @@ export default function LeaderboardPage() {
                         </span>
                         <span className="ml-1 text-[11px] font-semibold text-muted">
                           goals
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
+        {activeTab === 'playmakers' && (
+          <motion.div
+            key="tab-playmakers"
+            {...animationProps}
+            className="space-y-4"
+          >
+            {/* Podium */}
+            {renderPodium(playmakers, 'assists')}
+
+            {/* Full Ranked List */}
+            <Card className="overflow-hidden border-border bg-surface shadow-sm">
+              <div className="border-b border-border/50 bg-secondary/20 dark:bg-secondary/70 px-4 py-3 flex items-center justify-between">
+                <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <Handshake className="h-4 w-4 text-violet-500" />
+                  <span>Playmaker Standings</span>
+                </span>
+                <span className="text-[11px] font-semibold text-muted">
+                  {users.reduce((acc, u) => acc + u.total_assists, 0)} Total Assists
+                </span>
+              </div>
+
+              <div className="border-b border-border/40 bg-violet-500/5 px-4 py-2 text-[11px] text-muted flex items-center gap-1.5">
+                <Info className="h-3.5 w-3.5 shrink-0 text-violet-500" />
+                <span>Assists are tracked manually — automated video detection coming soon.</span>
+              </div>
+
+              <CardContent className="divide-y divide-border/40 p-0">
+                {playmakers.map((player, index) => {
+                  const rank = index + 1;
+                  const isCurrent = player.id === currentUserId;
+
+                  return (
+                    <div
+                      key={player.id}
+                      className={cn(
+                        'flex items-center justify-between px-4 py-3 transition-colors',
+                        isCurrent
+                          ? 'bg-primary/5 hover:bg-primary/10'
+                          : 'hover:bg-muted/5'
+                      )}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={cn(
+                            'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-black',
+                            rank === 1
+                              ? 'bg-violet-500 text-white shadow-xs'
+                              : rank === 2
+                                ? 'bg-slate-300 text-slate-800 dark:bg-slate-700 dark:text-slate-200'
+                                : rank === 3
+                                  ? 'bg-amber-700/80 text-white'
+                                  : 'bg-muted/15 text-muted'
+                          )}
+                        >
+                          {rank}
+                        </span>
+
+                        <Avatar name={player.name} src={player.avatar_url} size="sm" />
+
+                        <div>
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                            <JerseyNumber number={player.jersey_number} size="sm" />
+                            <span>{player.name}</span>
+                            {isCurrent && (
+                              <Badge variant="primary" className="text-[9px] py-0 px-1">
+                                You
+                              </Badge>
+                            )}
+                            {player.role === 'admin' && (
+                              <span className="text-[9px] font-bold uppercase text-gold">
+                                Admin
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-muted capitalize">
+                            {player.position === 'gk' ? 'Goalkeeper' : 'Field Player'}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="text-sm font-extrabold text-foreground">
+                          {player.total_assists}
+                        </span>
+                        <span className="ml-1 text-[11px] font-semibold text-muted">
+                          {player.total_assists === 1 ? 'assist' : 'assists'}
                         </span>
                       </div>
                     </div>

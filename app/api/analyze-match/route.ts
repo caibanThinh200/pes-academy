@@ -3,12 +3,31 @@ import { GoogleGenAI, Type, type Schema } from '@google/genai';
 import { z } from 'zod';
 import { MatchEvent } from '@/types/database';
 import { formatTimestamp, normalizeYouTubeUrl } from '@/lib/utils';
+import { isSupabaseConfigured } from '@/lib/auth-shared';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 export const maxDuration = 60;
 
-const GEMINI_MODEL = 'gemini-2.5-flash';
+const DEFAULT_GEMINI_MODEL = 'models/gemini-4-hydrogen';
+const FALLBACK_GEMINI_MODELS = [
+  'gemini-3.8-flash',
+  'gemini-3.6-flash',
+  'gemini-4-hydrogen',
+  'gemini-3.5-flash-lite',
+] as const;
+
+function getGeminiCandidateModels(): string[] {
+  const configured = process.env.GEMINI_MODEL?.trim();
+  return Array.from(
+    new Set(
+      [configured || DEFAULT_GEMINI_MODEL, ...FALLBACK_GEMINI_MODELS].filter(
+        (m): m is string => Boolean(m)
+      )
+    )
+  );
+}
 const MAX_CANDIDATES_PER_CHUNK = 12;
-const PASS2_CONCURRENCY = 4;
+const PASS2_CONCURRENCY = 2;
 const EVENT_DEDUP_WINDOW_SEC = 6;
 
 interface RosterPlayerInput {
@@ -189,7 +208,7 @@ const PASS2_SYSTEM_INSTRUCTION = [
 async function withRetry<T>(
   fn: () => Promise<T>,
   retries = 2,
-  baseDelayMs = 800
+  baseDelayMs = 1500
 ): Promise<T> {
   let lastError: unknown;
 
@@ -201,7 +220,7 @@ async function withRetry<T>(
       if (attempt === retries || !isTransientGeminiError(err)) {
         throw err;
       }
-      const delayMs = baseDelayMs * Math.pow(2, attempt);
+      const delayMs = baseDelayMs * Math.pow(2, attempt) + Math.floor(Math.random() * 500);
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
@@ -228,6 +247,19 @@ function isTransientGeminiError(err: unknown): boolean {
     message.includes('504') ||
     message.includes('TIMEOUT') ||
     message.includes('ECONNRESET')
+  );
+}
+
+function isModelNotFoundError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const record = err as Record<string, unknown>;
+  const status = Number(record.status ?? record.statusCode ?? record.code);
+  if (status === 404) return true;
+  const message = String(record.message ?? err).toUpperCase();
+  return (
+    message.includes('404') ||
+    message.includes('NOT_FOUND') ||
+    message.includes('NO LONGER AVAILABLE')
   );
 }
 
@@ -270,42 +302,42 @@ function getSimulatedEvents(
     visual_cue: string;
     preferredJerseys: number[];
   }> = [
-    {
-      fraction: 0.08 + (chunkIndex % 2) * 0.04,
-      event_type: 'goal',
-      confidence_score: 0.94,
-      visual_cue: 'Forward (#10) curls a left-footed strike into the top-right corner',
-      preferredJerseys: [10, 9, 7],
-    },
-    {
-      fraction: 0.28 + (chunkIndex % 3) * 0.03,
-      event_type: 'save',
-      confidence_score: 0.89,
-      visual_cue: 'Goalkeeper dives full-stretch to parry a low driven shot around the post',
-      preferredJerseys: [1],
-    },
-    {
-      fraction: 0.56,
-      event_type: 'goal',
-      confidence_score: 0.96,
-      visual_cue: 'Striker (#9) finishes a one-touch counter-attack at the near post',
-      preferredJerseys: [9, 10, 11],
-    },
-    {
-      fraction: 0.78,
-      event_type: 'save',
-      confidence_score: 0.84,
-      visual_cue: 'Point-blank reflex deflection off the crossbar by the goalkeeper',
-      preferredJerseys: [1],
-    },
-    {
-      fraction: 0.91,
-      event_type: 'goal',
-      confidence_score: 0.91,
-      visual_cue: 'Midfielder (#7) volleys from the edge of the box into the bottom-left corner',
-      preferredJerseys: [7, 8, 10],
-    },
-  ];
+      {
+        fraction: 0.08 + (chunkIndex % 2) * 0.04,
+        event_type: 'goal',
+        confidence_score: 0.94,
+        visual_cue: 'Forward (#10) curls a left-footed strike into the top-right corner',
+        preferredJerseys: [10, 9, 7],
+      },
+      {
+        fraction: 0.28 + (chunkIndex % 3) * 0.03,
+        event_type: 'save',
+        confidence_score: 0.89,
+        visual_cue: 'Goalkeeper dives full-stretch to parry a low driven shot around the post',
+        preferredJerseys: [1],
+      },
+      {
+        fraction: 0.56,
+        event_type: 'goal',
+        confidence_score: 0.96,
+        visual_cue: 'Striker (#9) finishes a one-touch counter-attack at the near post',
+        preferredJerseys: [9, 10, 11],
+      },
+      {
+        fraction: 0.78,
+        event_type: 'save',
+        confidence_score: 0.84,
+        visual_cue: 'Point-blank reflex deflection off the crossbar by the goalkeeper',
+        preferredJerseys: [1],
+      },
+      {
+        fraction: 0.91,
+        event_type: 'goal',
+        confidence_score: 0.91,
+        visual_cue: 'Midfielder (#7) volleys from the edge of the box into the bottom-left corner',
+        preferredJerseys: [7, 8, 10],
+      },
+    ];
 
   // For chunks beyond the first, simulate 2-3 events so multi-chunk scans feel realistic
   const selectedTemplates =
@@ -368,8 +400,7 @@ function formatSquadRoster(roster: RosterPlayerInput[]): string {
   return roster
     .map(
       (p) =>
-        `- ID: "${p.id}" | Name: "${p.name}" | Jersey #: ${
-          p.jersey_number ?? 'N/A'
+        `- ID: "${p.id}" | Name: "${p.name}" | Jersey #: ${p.jersey_number ?? 'N/A'
         } | Position: ${p.position === 'gk' ? 'GK (Goalkeeper)' : 'Outfield'}`
     )
     .join('\n');
@@ -576,6 +607,27 @@ async function runInBatches<T, R>(
 
 export async function POST(req: NextRequest) {
   try {
+    if (isSupabaseConfigured) {
+      const supabase = await createSupabaseServerClient();
+      const {
+        data: { user },
+      } = (await supabase?.auth.getUser()) ?? { data: { user: null } };
+
+      if (!user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+
+      const { data: profile } = await supabase!
+        .from('users')
+        .select('role')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (profile?.role !== 'admin') {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    }
+
     const body = (await req.json().catch(() => ({}))) as AnalyzeMatchPayload;
     const matchId = body.matchId || '10000000-0000-0000-0000-000000000002';
     const videoUrl = body.videoUrl ?? null;
@@ -597,17 +649,25 @@ export async function POST(req: NextRequest) {
       apiKey.length > 10 && !apiKey.toLowerCase().includes('your_gemini_api_key');
     const canonicalYoutubeUrl = normalizeYouTubeUrl(videoUrl);
 
-    if (!isValidApiKey || !canonicalYoutubeUrl) {
-      const reason = !isValidApiKey
-        ? 'No valid GEMINI_API_KEY detected in environment; returning realistic AI simulation.'
-        : 'No YouTube URL attached to this match; returning chunked demo simulation.';
+    if (!canonicalYoutubeUrl) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'A valid YouTube match video URL is required before running analysis.',
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!isValidApiKey) {
       return NextResponse.json({
         success: true,
         simulated: true,
         mode: 'simulated' as const,
+        model: 'simulation-fallback',
         chunkStartSec,
         chunkEndSec,
-        message: reason,
+        message: 'No valid GEMINI_API_KEY detected in environment; returning realistic AI simulation.',
         events: getSimulatedEvents(matchId, chunkStartSec, chunkEndSec, roster),
       });
     }
@@ -616,12 +676,43 @@ export async function POST(req: NextRequest) {
     const formattedRoster = formatSquadRoster(roster);
     const validRosterIds = new Set(roster.map((p) => p.id));
 
+    const candidateModels = getGeminiCandidateModels();
+    let activeModel = candidateModels[0] ?? DEFAULT_GEMINI_MODEL;
+    console.log(activeModel, 'model')
+
+    const generateWithModel = async (
+      runForModel: (model: string) => ReturnType<typeof ai.models.generateContent>
+    ) => {
+      const modelsToTry = [
+        activeModel,
+        ...candidateModels.filter((m) => m !== activeModel),
+      ];
+      let lastErr: unknown;
+      for (const model of modelsToTry) {
+        try {
+          const response = await withRetry(() => runForModel(model), 2, 1200);
+          activeModel = model;
+          return response;
+        } catch (err) {
+          lastErr = err;
+          if (isModelNotFoundError(err) || isTransientGeminiError(err)) {
+            console.warn(
+              `Gemini model "${model}" unavailable (${err instanceof Error ? err.message : String(err)}); trying next fallback model.`
+            );
+            continue;
+          }
+          throw err;
+        }
+      }
+      throw lastErr;
+    };
+
     try {
       // Pass 1: Audio + 2s Frame Catch Candidate Spotter (0.5 FPS + full audio track)
       const pass1Prompt = buildPass1Prompt(chunkStartSec, chunkEndSec, teamKitNote, formattedRoster);
-      const pass1Response = await withRetry(() =>
+      const pass1Response = await generateWithModel((model) =>
         ai.models.generateContent({
-          model: GEMINI_MODEL,
+          model,
           contents: [
             {
               role: 'user',
@@ -655,12 +746,12 @@ export async function POST(req: NextRequest) {
       if (!pass1RawText) {
         return NextResponse.json({
           success: true,
-          simulated: true,
-          mode: 'simulated' as const,
+          simulated: false,
+          mode: 'gemini_youtube' as const,
+          model: activeModel,
           chunkStartSec,
           chunkEndSec,
-          message: 'Pass 1 returned empty response; fallback simulation applied.',
-          events: getSimulatedEvents(matchId, chunkStartSec, chunkEndSec, roster),
+          events: [],
         });
       }
 
@@ -668,17 +759,17 @@ export async function POST(req: NextRequest) {
       const pass1Parsed = CandidateWindowArraySchema.safeParse(pass1Json);
 
       if (!pass1Parsed.success) {
-        console.warn('Pass 1 candidate schema validation failed; falling back to simulation.', {
+        console.warn('Pass 1 candidate schema validation failed; returning empty events.', {
           issues: pass1Parsed.error.issues.slice(0, 5),
         });
         return NextResponse.json({
           success: true,
-          simulated: true,
-          mode: 'simulated' as const,
+          simulated: false,
+          mode: 'gemini_youtube' as const,
+          model: activeModel,
           chunkStartSec,
           chunkEndSec,
-          message: 'Pass 1 returned malformed candidates; fallback simulation applied.',
-          events: getSimulatedEvents(matchId, chunkStartSec, chunkEndSec, roster),
+          events: [],
         });
       }
 
@@ -687,6 +778,7 @@ export async function POST(req: NextRequest) {
           success: true,
           simulated: false,
           mode: 'gemini_youtube' as const,
+          model: activeModel,
           chunkStartSec,
           chunkEndSec,
           events: [],
@@ -715,9 +807,9 @@ export async function POST(req: NextRequest) {
             formattedRoster
           );
 
-          const pass2Response = await withRetry(() =>
+          const pass2Response = await generateWithModel((model) =>
             ai.models.generateContent({
-              model: GEMINI_MODEL,
+              model,
               contents: [
                 {
                   role: 'user',
@@ -820,21 +912,23 @@ export async function POST(req: NextRequest) {
         success: true,
         simulated: false,
         mode: 'gemini_youtube' as const,
+        model: activeModel,
         chunkStartSec,
         chunkEndSec,
         events: verifiedEvents,
       });
     } catch (err) {
       console.error('Error querying Gemini API:', err);
-      return NextResponse.json({
-        success: true,
-        simulated: true,
-        mode: 'simulated' as const,
-        chunkStartSec,
-        chunkEndSec,
-        message: 'Exception occurred while contacting Gemini API; fallback simulation applied.',
-        events: getSimulatedEvents(matchId, chunkStartSec, chunkEndSec, roster),
-      });
+      const isOverloaded = isTransientGeminiError(err);
+      return NextResponse.json(
+        {
+          success: false,
+          error: isOverloaded
+            ? 'Gemini AI is currently experiencing high demand across all fallback models. Please wait a moment and try again.'
+            : 'Failed to analyze match video with Gemini AI. Please try again.',
+        },
+        { status: isOverloaded ? 503 : 502 }
+      );
     }
   } catch (err) {
     console.error('Route error in /api/analyze-match:', err);

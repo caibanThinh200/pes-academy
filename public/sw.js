@@ -1,4 +1,10 @@
-const CACHE_NAME = 'pes-academy-v3';
+const CACHE_NAME = 'pes-academy-v4';
+
+const AUTH_NO_CACHE_PATHS = new Set([
+  '/login',
+  '/forgot-password',
+  '/change-password',
+]);
 
 const PRECACHE_ASSETS = [
   '/icons/icon-192x192.png',
@@ -52,7 +58,12 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          if (response && response.ok) {
+          if (
+            response &&
+            response.ok &&
+            !response.redirected &&
+            !AUTH_NO_CACHE_PATHS.has(url.pathname)
+          ) {
             const copy = response.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
           }

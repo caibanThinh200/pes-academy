@@ -1,66 +1,41 @@
 -- ==============================================================================
 -- PES Academy Seed Data
--- 12 Players, 2 Matches (1 voting, 1 review), Attendance, 5 Match Events
+-- Real squad imported from "Thống Kê Chuyên Môn" CSV (33 players, season totals only).
+-- No mock matches, attendance, or match_events are seeded.
 -- ==============================================================================
 
--- 1. Insert 12 Players
-INSERT INTO users (id, name, avatar_url, role, position, jersey_number, total_goals, total_saves, penalty_count) VALUES
-  ('00000000-0000-0000-0000-000000000001', 'Leo Nguyen', NULL, 'admin', 'field', 10, 14, 0, 0),
-  ('00000000-0000-0000-0000-000000000002', 'Julian Alvarez Tran', NULL, 'player', 'field', 9, 11, 0, 1),
-  ('00000000-0000-0000-0000-000000000003', 'Dibu Martinez Le', NULL, 'admin', 'gk', 1, 0, 28, 0),
-  ('00000000-0000-0000-0000-000000000004', 'Rodrigo De Paul Pham', NULL, 'player', 'field', 7, 6, 0, 2),
-  ('00000000-0000-0000-0000-000000000005', 'Alexis Mac Allister Vu', NULL, 'player', 'field', 20, 8, 0, 0),
-  ('00000000-0000-0000-0000-000000000006', 'Enzo Fernandez Hoang', NULL, 'player', 'field', 24, 5, 0, 1),
-  ('00000000-0000-0000-0000-000000000007', 'Angel Di Maria Do', NULL, 'player', 'field', 11, 9, 0, 0),
-  ('00000000-0000-0000-0000-000000000008', 'Franco Armani Dang', NULL, 'player', 'gk', 12, 0, 19, 1),
-  ('00000000-0000-0000-0000-000000000009', 'Cristian Romero Bui', NULL, 'player', 'field', 13, 3, 0, 3),
-  ('00000000-0000-0000-0000-000000000010', 'Nicolas Otamendi Ngo', NULL, 'player', 'field', 19, 2, 0, 4),
-  ('00000000-0000-0000-0000-000000000011', 'Lautaro Martinez Dinh', NULL, 'player', 'field', 22, 10, 0, 1),
-  ('00000000-0000-0000-0000-000000000012', 'Nahuel Molina Vo', NULL, 'player', 'field', 26, 4, 0, 2)
-ON CONFLICT (id) DO NOTHING;
-
--- 2. Insert 2 Matches
-INSERT INTO matches (id, title, match_date, location, status, video_url) VALUES
-  ('10000000-0000-0000-0000-000000000001', 'Matchday 24: Albiceleste Cup Qualifier', '2026-11-21 18:00:00+00', 'Estadio Chapa 7 - Pitch A (Saigon Sports Center)', 'voting', NULL),
-  ('10000000-0000-0000-0000-000000000002', 'Matchday 23: Superclásico Derby', '2026-11-14 18:00:00+00', 'Estadio Monumental Pitch 2 (District 7 Arena)', 'review', 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4')
-ON CONFLICT (id) DO NOTHING;
-
--- 3. Insert Attendance
--- Match 1 (Voting): 8 joined, 2 declined
-INSERT INTO attendance (id, match_id, user_id, vote_status, checkin_status) VALUES
-  (gen_random_uuid(), '10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'joined', 'pending'),
-  (gen_random_uuid(), '10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', 'joined', 'pending'),
-  (gen_random_uuid(), '10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000003', 'joined', 'pending'),
-  (gen_random_uuid(), '10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000004', 'joined', 'pending'),
-  (gen_random_uuid(), '10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000005', 'joined', 'pending'),
-  (gen_random_uuid(), '10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000006', 'joined', 'pending'),
-  (gen_random_uuid(), '10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000007', 'joined', 'pending'),
-  (gen_random_uuid(), '10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000011', 'joined', 'pending'),
-  (gen_random_uuid(), '10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000009', 'declined', 'pending'),
-  (gen_random_uuid(), '10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000010', 'declined', 'pending')
-ON CONFLICT (match_id, user_id) DO NOTHING;
-
--- Match 2 (Review): 10 present, 2 absent_penalized
-INSERT INTO attendance (id, match_id, user_id, vote_status, checkin_status) VALUES
-  (gen_random_uuid(), '10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'joined', 'present'),
-  (gen_random_uuid(), '10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000002', 'joined', 'present'),
-  (gen_random_uuid(), '10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000003', 'joined', 'present'),
-  (gen_random_uuid(), '10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000004', 'joined', 'present'),
-  (gen_random_uuid(), '10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000005', 'joined', 'present'),
-  (gen_random_uuid(), '10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000006', 'joined', 'present'),
-  (gen_random_uuid(), '10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000007', 'joined', 'present'),
-  (gen_random_uuid(), '10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000008', 'joined', 'present'),
-  (gen_random_uuid(), '10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000011', 'joined', 'present'),
-  (gen_random_uuid(), '10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000012', 'joined', 'present'),
-  (gen_random_uuid(), '10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000009', 'joined', 'absent_penalized'),
-  (gen_random_uuid(), '10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000010', 'joined', 'absent_penalized')
-ON CONFLICT (match_id, user_id) DO NOTHING;
-
--- 4. Insert 5 Match Events (Match 2 review)
-INSERT INTO match_events (id, match_id, timestamp_sec, event_type, assigned_user_id, confidence_score, status, visual_cue) VALUES
-  ('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000002', 14.50, 'goal', '00000000-0000-0000-0000-000000000001', 0.942, 'pending_review', 'Albiceleste #10 curls a left-footed shot into the top-right corner'),
-  ('20000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002', 38.20, 'save', '00000000-0000-0000-0000-000000000003', 0.887, 'pending_review', 'Goalkeeper in green dives full-stretch to parry low drive'),
-  ('20000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000002', 72.00, 'goal', '00000000-0000-0000-0000-000000000002', 0.961, 'pending_review', 'White & sky-blue #9 finishes a one-touch counter-attack at near post'),
-  ('20000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000002', 105.80, 'save', '00000000-0000-0000-0000-000000000008', 0.835, 'pending_review', 'Point-blank reflex deflection off the crossbar by the keeper'),
-  ('20000000-0000-0000-0000-000000000005', '10000000-0000-0000-0000-000000000002', 142.30, 'goal', '00000000-0000-0000-0000-000000000007', 0.915, 'pending_review', 'Midfielder strikes a volley from the edge of the box into bottom-left')
+INSERT INTO users (id, username, name, avatar_url, role, position, jersey_number, total_goals, total_assists, total_saves, penalty_count, must_change_password) VALUES
+  ('00000000-0000-0000-0000-000000000001', 'AnVT1', 'Vũ Tiến An', NULL, 'player', 'field', NULL, 7, 1, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000002', 'AnDT14', 'Đặng Thiên Ân', NULL, 'player', 'field', NULL, 7, 1, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000003', 'AnhLD32', 'Lê Đức Anh', NULL, 'player', 'gk', NULL, 0, 1, 8, 0, false),
+  ('00000000-0000-0000-0000-000000000004', 'AnhND137', 'Nguyễn Đức Anh', NULL, 'player', 'field', NULL, 7, 0, 1, 0, false),
+  ('00000000-0000-0000-0000-000000000005', 'AnhTT194', 'Trần Tuấn Anh', NULL, 'player', 'field', NULL, 0, 0, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000006', 'CuongNLN1', 'Lê Nguyễn Ngọc Cường', NULL, 'player', 'field', NULL, 0, 0, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000007', 'DangNT1', 'Nguyễn Tường Đăng', NULL, 'player', 'field', NULL, 0, 0, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000008', 'DinhTN3', 'Trần Ngọc Định', NULL, 'player', 'gk', NULL, 1, 0, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000009', 'DungPQ6', 'Phi Quốc Dũng', NULL, 'player', 'field', NULL, 0, 0, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000010', 'DuyDDC', 'Đoàn Đinh Cảnh Duy', NULL, 'player', 'field', NULL, 0, 0, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000011', 'HuyNH61', 'Nguyễn Hoàng Huy', NULL, 'player', 'field', NULL, 4, 0, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000012', 'HuyNM25', 'Nguyễn Mạnh Huy', NULL, 'player', 'field', NULL, 0, 0, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000013', 'KhangHMQ', 'Huỳnh Mai Quốc Khang', NULL, 'player', 'field', NULL, 4, 3, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000014', 'KhanhHH2', 'Huỳnh Hữu Khánh', NULL, 'player', 'field', NULL, 0, 0, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000015', 'KhanhNN20', 'Nguyễn Nhật Khánh', NULL, 'player', 'field', NULL, 17, 5, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000016', 'KhoaHA7', 'Hà Anh Khoa', NULL, 'player', 'field', NULL, 0, 0, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000017', 'KhoaND86', 'Nguyễn Đăng Khoa', NULL, 'player', 'field', NULL, 3, 0, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000018', 'KhoaNLD3', 'Nguyễn Lý Đăng Khoa', NULL, 'player', 'field', NULL, 0, 0, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000019', 'LinhNVK1', 'Nguyễn Văn Khánh Linh', NULL, 'player', 'field', NULL, 0, 0, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000020', 'LoiNQ4', 'Nguyễn Quang Lợi', NULL, 'player', 'field', NULL, 3, 3, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000021', 'MinhNHC', 'Nguyễn Huỳnh Công Minh', NULL, 'player', 'field', NULL, 0, 0, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000022', 'NguyenLC12', 'Lê Cao Nguyên', NULL, 'player', 'field', NULL, 0, 0, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000023', 'PhatCT2', 'Chương Tiên Phát', NULL, 'player', 'field', NULL, 0, 0, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000024', 'PhucPM5', 'Phạm Minh Phúc', NULL, 'player', 'field', NULL, 0, 0, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000025', 'ThangTP3', 'Trần Phi Thắng', NULL, 'player', 'field', NULL, 1, 0, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000026', 'ThanhNK6', 'Nguyễn Kim Thanh', NULL, 'player', 'field', NULL, 5, 4, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000027', 'ThinhNQ31', 'Nguyễn Quốc Thịnh', NULL, 'admin', 'field', NULL, 5, 3, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000028', 'ThoDH3', 'Đặng Hoàng Thọ', NULL, 'player', 'field', NULL, 1, 0, 3, 0, false),
+  ('00000000-0000-0000-0000-000000000029', 'TienHD5', 'Hồ Duy Tiến', NULL, 'player', 'field', NULL, 3, 1, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000030', 'TrieuKN', 'Kiếm Nhựt Triệu', NULL, 'player', 'field', NULL, 2, 0, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000031', 'TrungHT6', 'Hứa Tiến Trung', NULL, 'player', 'field', NULL, 0, 2, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000032', 'VanNH24', 'Nguyễn Hà Văn', NULL, 'player', 'field', NULL, 7, 4, 0, 0, false),
+  ('00000000-0000-0000-0000-000000000033', 'VietNQ32', 'Nguyễn Quốc Việt', NULL, 'player', 'field', NULL, 0, 0, 0, 0, false)
 ON CONFLICT (id) DO NOTHING;
