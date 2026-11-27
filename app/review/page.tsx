@@ -91,23 +91,24 @@ export default function ReviewPage() {
 
   const isAdmin = role === 'admin';
 
-  // Find default match: preferably one in 'review' or 'completed'
+  // Find default match: strictly exclude upcoming ('voting' / 'checkin') matches
   const availableMatches = matches.filter(
-    (m) => m.status === 'review' || m.status === 'completed' || m.video_url
+    (m) => m.status === 'review' || m.status === 'completed'
   );
   const defaultMatchId =
     availableMatches.find((m) => m.status === 'review')?.id ||
-    availableMatches[0]?.id ||
-    matches[0]?.id;
+    availableMatches[0]?.id;
 
   const [userSelectedMatchId, setUserSelectedMatchId] = React.useState<string | null>(null);
   const selectedMatchId =
-    userSelectedMatchId && matches.some((m) => m.id === userSelectedMatchId)
+    userSelectedMatchId && availableMatches.some((m) => m.id === userSelectedMatchId)
       ? userSelectedMatchId
       : defaultMatchId;
   const setSelectedMatchId = setUserSelectedMatchId;
 
-  const selectedMatch = matches.find((m) => m.id === selectedMatchId) || matches[0];
+  const selectedMatch =
+    availableMatches.find((m) => m.id === selectedMatchId) ||
+    availableMatches[0];
 
   // Match events
   const matchEvents = events.filter((e) => e.match_id === selectedMatch?.id);
@@ -287,7 +288,13 @@ export default function ReviewPage() {
 
   // 15-Minute Chunked Gemini Flash Match Analysis Orchestrator
   const handleRunAiAnalysis = async () => {
-    if (!selectedMatch || isScanning) return;
+    if (
+      !selectedMatch ||
+      (selectedMatch.status !== 'review' && selectedMatch.status !== 'completed') ||
+      isScanning
+    ) {
+      return;
+    }
 
     if (!isYouTubeUrl(selectedMatch.video_url)) {
       setVideoUrlDraft({
@@ -402,8 +409,8 @@ export default function ReviewPage() {
   return (
     <div className="space-y-4">
       {/* Page Title & AI Analysis Action */}
-      <div className="flex items-center justify-between gap-2">
-        <div>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
           <h1 className="text-xl font-extrabold tracking-tight text-foreground">
             Result
           </h1>
@@ -413,16 +420,16 @@ export default function ReviewPage() {
         </div>
 
         {/* AI Scan Action / Stop Button */}
-        {matches.length > 0 && (
-          <div className="flex items-center gap-2">
+        {availableMatches.length > 0 && selectedMatch && (
+          <div className="flex shrink-0 items-center gap-2">
             {isScanning ? (
               <Button
                 variant="danger"
                 size="sm"
                 onClick={handleStopScan}
-                className="gap-1.5 shadow-sm"
+                className="shrink-0 whitespace-nowrap gap-1.5 shadow-sm"
               >
-                <Square className="h-3.5 w-3.5 fill-current" />
+                <Square className="h-3.5 w-3.5 shrink-0 fill-current" />
                 <span>Stop Scan</span>
               </Button>
             ) : (
@@ -436,9 +443,9 @@ export default function ReviewPage() {
                     ? 'Add a YouTube match link to enable analysis'
                     : undefined
                 }
-                className="gap-1.5 shadow-sm"
+                className="shrink-0 whitespace-nowrap gap-1.5 shadow-sm"
               >
-                <Sparkles className="h-3.5 w-3.5" />
+                <Sparkles className="h-3.5 w-3.5 shrink-0" />
                 <span>Analyze Match</span>
               </Button>
             )}
@@ -456,14 +463,14 @@ export default function ReviewPage() {
             className="rounded-xl border border-gold/40 bg-gold/10 p-3 shadow-sm"
           >
             <div className="flex items-center justify-between gap-2 text-xs font-bold text-foreground">
-              <div className="flex items-center gap-2">
-                <RefreshCw className="h-3.5 w-3.5 animate-spin text-gold" />
+              <div className="flex min-w-0 items-center gap-2">
+                <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin text-gold" />
                 <span>
                   Scanning Chunk {scanProgress.currentChunk}/{scanProgress.totalChunks} (
                   {scanProgress.rangeLabel})
                 </span>
               </div>
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-gold">
+              <span className="shrink-0 whitespace-nowrap text-[10px] font-semibold uppercase tracking-wider text-gold">
                 {scanProgress.mode === 'gemini_youtube'
                   ? 'Video Scanner'
                   : isYouTubeConnected
@@ -488,14 +495,14 @@ export default function ReviewPage() {
       {/* Post-Scan Summary Banner */}
       {!isScanning && scanSummary && (
         <div className="flex items-center justify-between gap-2 rounded-xl border border-success/35 bg-success/10 px-3.5 py-2 text-xs font-semibold text-foreground">
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
             <span>{scanSummary}</span>
           </div>
           <button
             type="button"
             onClick={() => setScanSummary(null)}
-            className="text-[11px] font-bold text-muted hover:text-foreground"
+            className="shrink-0 whitespace-nowrap text-[11px] font-bold text-muted hover:text-foreground"
           >
             Dismiss
           </button>
@@ -520,9 +527,9 @@ export default function ReviewPage() {
       </AnimatePresence>
 
       {/* Match Selector Dropdown / Pills if multiple matches exist */}
-      {matches.length > 1 && (
+      {availableMatches.length > 1 && (
         <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-          {matches.map((m) => {
+          {availableMatches.map((m) => {
             const isSel = m.id === selectedMatchId;
             return (
               <button
@@ -599,19 +606,19 @@ export default function ReviewPage() {
           {/* Admin YouTube Match Footage & AI Context Panel */}
           {isAdmin && (
             <div className="space-y-2.5 border-t border-border/50 pt-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <Link2 className="h-3.5 w-3.5 text-primary" />
+              <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
+                <div className="flex flex-wrap items-center gap-2 min-w-0">
+                  <Link2 className="h-3.5 w-3.5 shrink-0 text-primary" />
                   <span className="text-xs font-bold text-foreground">
                     YouTube Match Footage & Match Context
                   </span>
                   {isYouTubeConnected ? (
-                    <span className="inline-flex items-center gap-1 rounded-full border border-success/40 bg-success/15 px-2 py-0.5 text-[10px] font-bold text-success">
-                      <Check className="h-2.5 w-2.5" />
+                    <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-success/40 bg-success/15 px-2 py-0.5 text-[10px] font-bold text-success">
+                      <Check className="h-2.5 w-2.5 shrink-0" />
                       YouTube Connected
                     </span>
                   ) : (
-                    <span className="rounded-full border border-border bg-muted/15 px-2 py-0.5 text-[10px] font-semibold text-muted">
+                    <span className="shrink-0 whitespace-nowrap rounded-full border border-border bg-muted/15 px-2 py-0.5 text-[10px] font-semibold text-muted">
                       Demo Clip Active
                     </span>
                   )}
@@ -621,7 +628,7 @@ export default function ReviewPage() {
                   <button
                     type="button"
                     onClick={() => setIsEditingVideoUrl(true)}
-                    className="text-[11px] font-bold text-primary hover:underline"
+                    className="shrink-0 whitespace-nowrap text-[11px] font-bold text-primary hover:underline"
                   >
                     {selectedMatch.video_url ? 'Change Link' : '+ Paste YouTube Link'}
                   </button>
@@ -743,16 +750,20 @@ export default function ReviewPage() {
       )}
 
       {/* Verification Queue Section or Empty State */}
-      {matches.length === 0 ? (
+      {availableMatches.length === 0 ? (
         <Card className="p-8 text-center border-dashed border-2 border-border/80 bg-surface/40">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary mb-3">
             <Video className="h-6 w-6" />
           </div>
-          <h3 className="text-base font-bold text-foreground">No matches yet</h3>
+          <h3 className="text-base font-bold text-foreground">
+            {matches.length > 0 ? 'No match results yet' : 'No matches yet'}
+          </h3>
           <p className="text-xs text-muted mt-1 max-w-xs mx-auto">
-            {isAdmin
-              ? 'Create a match from the Matches tab to add footage and verify highlights.'
-              : 'Match highlights and detected clips will appear here after your first fixture.'}
+            {matches.length > 0
+              ? 'Match results and video analysis unlock once check-in is finalized.'
+              : isAdmin
+                ? 'Create a match from the Matches tab to add footage and verify highlights.'
+                : 'Match highlights and detected clips will appear here after your first fixture.'}
           </p>
         </Card>
       ) : (

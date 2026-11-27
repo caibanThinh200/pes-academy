@@ -8,26 +8,27 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 export const maxDuration = 60;
 
-const DEFAULT_GEMINI_MODEL = 'models/gemini-4-hydrogen';
+const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash-lite';
 const FALLBACK_GEMINI_MODELS = [
-  'gemini-3.8-flash',
-  'gemini-3.6-flash',
-  'gemini-4-hydrogen',
   'gemini-3.5-flash-lite',
+  'gemini-3.6-flash',
+  'gemini-3.8-flash',
+  'gemini-4-hydrogen',
 ] as const;
 
 function getGeminiCandidateModels(): string[] {
   const configured = process.env.GEMINI_MODEL?.trim();
   return Array.from(
     new Set(
-      [configured || DEFAULT_GEMINI_MODEL, ...FALLBACK_GEMINI_MODELS].filter(
-        (m): m is string => Boolean(m)
-      )
+      [configured || DEFAULT_GEMINI_MODEL, ...FALLBACK_GEMINI_MODELS]
+        .map((m) => m?.replace(/^models\//, ''))
+        .filter((m): m is string => Boolean(m))
     )
   );
 }
-const MAX_CANDIDATES_PER_CHUNK = 12;
-const PASS2_CONCURRENCY = 2;
+const MAX_CANDIDATES_PER_CHUNK = 6;
+const PASS2_CONCURRENCY = 1;
+const PASS2_DELAY_MS = 1500;
 const EVENT_DEDUP_WINDOW_SEC = 6;
 
 interface RosterPlayerInput {
@@ -228,38 +229,66 @@ async function withRetry<T>(
   throw lastError;
 }
 
-function isTransientGeminiError(err: unknown): boolean {
-  if (!err || typeof err !== 'object') return false;
+function getErrorStatusAndMessage(
+  err: unknown
+): { status: number; message: string } | null {
+  if (!err || typeof err !== 'object') return null;
   const record = err as Record<string, unknown>;
   const status = Number(record.status ?? record.statusCode ?? record.code);
-  if (status === 429 || (Number.isFinite(status) && status >= 500 && status < 600)) {
+  const message = String(record.message ?? err).toUpperCase();
+  return { status, message };
+}
+
+function isPrepaymentDepletedError(err: unknown): boolean {
+  const details = getErrorStatusAndMessage(err);
+  if (!details) return false;
+  if (details.status === 402) return true;
+  return (
+    details.message.includes('402') ||
+    details.message.includes('PREPAYMENT') ||
+    details.message.includes('CREDITS ARE DEPLETED')
+  );
+}
+
+function isRateLimitError(err: unknown): boolean {
+  if (isPrepaymentDepletedError(err)) return false;
+  const details = getErrorStatusAndMessage(err);
+  if (!details) return false;
+  if (details.status === 429) return true;
+  return (
+    details.message.includes('429') ||
+    details.message.includes('RESOURCE_EXHAUSTED') ||
+    details.message.includes('QUOTA') ||
+    details.message.includes('RATE LIMIT')
+  );
+}
+
+function isTransientGeminiError(err: unknown): boolean {
+  const details = getErrorStatusAndMessage(err);
+  if (!details) return false;
+  if (Number.isFinite(details.status) && details.status >= 500 && details.status < 600) {
     return true;
   }
-  const message = String(record.message ?? err).toUpperCase();
   return (
-    message.includes('429') ||
-    message.includes('RESOURCE_EXHAUSTED') ||
-    message.includes('UNAVAILABLE') ||
-    message.includes('INTERNAL') ||
-    message.includes('503') ||
-    message.includes('502') ||
-    message.includes('500') ||
-    message.includes('504') ||
-    message.includes('TIMEOUT') ||
-    message.includes('ECONNRESET')
+    details.message.includes('UNAVAILABLE') ||
+    details.message.includes('INTERNAL') ||
+    details.message.includes('503') ||
+    details.message.includes('502') ||
+    details.message.includes('500') ||
+    details.message.includes('504') ||
+    details.message.includes('TIMEOUT') ||
+    details.message.includes('ECONNRESET')
   );
 }
 
 function isModelNotFoundError(err: unknown): boolean {
-  if (!err || typeof err !== 'object') return false;
-  const record = err as Record<string, unknown>;
-  const status = Number(record.status ?? record.statusCode ?? record.code);
-  if (status === 404) return true;
-  const message = String(record.message ?? err).toUpperCase();
+  const details = getErrorStatusAndMessage(err);
+  if (!details) return false;
+  if (details.status === 404) return true;
   return (
-    message.includes('404') ||
-    message.includes('NOT_FOUND') ||
-    message.includes('NO LONGER AVAILABLE')
+    details.message.includes('404') ||
+    details.message.includes('NOT_FOUND') ||
+    details.message.includes('NO LONGER AVAILABLE')
   );
 }
 
@@ -594,21 +623,26 @@ function buildPass2Prompt(
 async function runInBatches<T, R>(
   items: T[],
   batchSize: number,
-  worker: (item: T) => Promise<R>
+  worker: (item: T) => Promise<R>,
+  delayBetweenBatchesMs = 0
 ): Promise<PromiseSettledResult<R>[]> {
   const results: PromiseSettledResult<R>[] = [];
   for (let i = 0; i < items.length; i += batchSize) {
     const batch = items.slice(i, i + batchSize);
     const batchResults = await Promise.allSettled(batch.map((item) => worker(item)));
     results.push(...batchResults);
+    if (delayBetweenBatchesMs > 0 && i + batchSize < items.length) {
+      await new Promise((resolve) => setTimeout(resolve, delayBetweenBatchesMs));
+    }
   }
   return results;
 }
 
 export async function POST(req: NextRequest) {
   try {
+    const supabase = isSupabaseConfigured ? await createSupabaseServerClient() : null;
+
     if (isSupabaseConfigured) {
-      const supabase = await createSupabaseServerClient();
       const {
         data: { user },
       } = (await supabase?.auth.getUser()) ?? { data: { user: null } };
@@ -629,6 +663,21 @@ export async function POST(req: NextRequest) {
     }
 
     const body = (await req.json().catch(() => ({}))) as AnalyzeMatchPayload;
+    if (isSupabaseConfigured && supabase && body.matchId) {
+      const { data: matchRow } = await supabase
+        .from('matches')
+        .select('status')
+        .eq('id', body.matchId)
+        .maybeSingle();
+
+      if (matchRow && (matchRow.status === 'voting' || matchRow.status === 'checkin')) {
+        return NextResponse.json(
+          { error: 'Cannot analyze an upcoming match before check-in is finalized.' },
+          { status: 400 }
+        );
+      }
+    }
+
     const matchId = body.matchId || '10000000-0000-0000-0000-000000000002';
     const videoUrl = body.videoUrl ?? null;
     const teamKitNote = typeof body.teamKitNote === 'string' ? body.teamKitNote.trim() : '';
@@ -678,7 +727,6 @@ export async function POST(req: NextRequest) {
 
     const candidateModels = getGeminiCandidateModels();
     let activeModel = candidateModels[0] ?? DEFAULT_GEMINI_MODEL;
-    console.log(activeModel, 'model')
 
     const generateWithModel = async (
       runForModel: (model: string) => ReturnType<typeof ai.models.generateContent>
@@ -694,8 +742,15 @@ export async function POST(req: NextRequest) {
           activeModel = model;
           return response;
         } catch (err) {
+          if (isPrepaymentDepletedError(err)) {
+            throw err;
+          }
           lastErr = err;
-          if (isModelNotFoundError(err) || isTransientGeminiError(err)) {
+          if (
+            isModelNotFoundError(err) ||
+            isRateLimitError(err) ||
+            isTransientGeminiError(err)
+          ) {
             console.warn(
               `Gemini model "${model}" unavailable (${err instanceof Error ? err.message : String(err)}); trying next fallback model.`
             );
@@ -892,7 +947,8 @@ export async function POST(req: NextRequest) {
                 status: 'pending_review',
               };
             });
-        }
+        },
+        PASS2_DELAY_MS
       );
 
       const fulfilledResults = pass2Results.filter(
@@ -919,6 +975,26 @@ export async function POST(req: NextRequest) {
       });
     } catch (err) {
       console.error('Error querying Gemini API:', err);
+      if (isPrepaymentDepletedError(err)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              'Your Google AI Studio project is set to Tier 1 with $0 prepayment credits (HTTP 402). To use the Free Tier (500 requests/day on gemini-3.5-flash-lite), unlink billing on your project at https://ai.studio/projects or create a new Free-tier API key.',
+          },
+          { status: 402 }
+        );
+      }
+      if (isRateLimitError(err)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              'Gemini Free Tier rate limit reached (429). Please wait ~60 seconds before scanning the next segment, or verify your daily RPD limit in Google AI Studio.',
+          },
+          { status: 429 }
+        );
+      }
       const isOverloaded = isTransientGeminiError(err);
       return NextResponse.json(
         {

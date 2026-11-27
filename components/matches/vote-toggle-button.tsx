@@ -52,13 +52,14 @@ export function VoteToggleButton({ joined, onToggle, disabled = false }: VoteTog
         <motion.div whileTap={disabled ? undefined : { scale: 0.96 }}>
           <Button
             type="button"
+            variant={joined ? 'success' : 'primary'}
             size="lg"
             disabled={disabled}
             onClick={handleClick}
             className={cn(
               'relative w-full overflow-hidden transition-all duration-200 font-bold',
               joined
-                ? 'border-2 border-success/40 bg-success/10 text-success hover:bg-success/20 shadow-none'
+                ? 'bg-success text-white hover:bg-success/90 shadow-md'
                 : 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-md'
             )}
           >
@@ -82,7 +83,7 @@ export function VoteToggleButton({ joined, onToggle, disabled = false }: VoteTog
                   transition={{ duration: 0.18 }}
                   className="flex items-center gap-2"
                 >
-                  <Check className="h-5 w-5 stroke-[2.5]" />
+                  <Check className="h-5 w-5 stroke-[2.5] text-white" />
                   <span>You&apos;re In</span>
                   <span className="text-xs font-normal opacity-80">· Tap to withdraw</span>
                 </motion.div>

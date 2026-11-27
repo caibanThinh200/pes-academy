@@ -8,7 +8,7 @@ import { ThemeToggle } from './theme-toggle';
 export function AppHeader() {
   return (
     <header className="sticky top-0 z-30 w-full border-b border-border bg-surface/85 backdrop-blur-md transition-colors pt-safe">
-      <div className="mx-auto flex h-16 max-w-md items-center justify-between px-4">
+      <div className="mx-auto flex h-16 max-w-lg items-center justify-between px-4">
         {/* Left: Brand Crest & Wordmark */}
         <Link
           href="/"

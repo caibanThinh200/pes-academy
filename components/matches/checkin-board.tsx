@@ -11,7 +11,7 @@ import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { JerseyNumber } from '@/components/ui/jersey-number';
 import { FinalizeCheckinSheet } from './finalize-checkin-sheet';
-import { cn } from '@/lib/utils';
+import { cn, isMatchOverdue } from '@/lib/utils';
 
 export interface CheckinBoardProps {
   match: Match;
@@ -41,6 +41,7 @@ export function CheckinBoard({ match, joinedAttendance, users }: CheckinBoardPro
     .map((i) => i.user);
 
   const isVoting = match.status === 'voting';
+  const isOverdue = isMatchOverdue(match);
 
   return (
     <>
@@ -61,7 +62,7 @@ export function CheckinBoard({ match, joinedAttendance, users }: CheckinBoardPro
                 {presentCount}/{joinedUserItems.length} Present
               </Badge>
 
-              {isVoting && (
+              {isVoting && !isOverdue && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -77,6 +78,15 @@ export function CheckinBoard({ match, joinedAttendance, users }: CheckinBoardPro
         </CardHeader>
 
         <CardContent className="space-y-4">
+          {isOverdue && (
+            <div className="flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2.5 text-xs font-medium text-danger">
+              <ShieldAlert className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>
+                This match is overdue — player check-in is locked. Finalize check-in below to close the match.
+              </span>
+            </div>
+          )}
+
           {joinedUserItems.length === 0 ? (
             <div className="py-8 text-center text-xs text-muted font-medium bg-muted/5 rounded-xl border border-dashed border-border/70 flex flex-col items-center gap-1.5">
               <Users className="h-5 w-5 text-muted/60" />
@@ -92,15 +102,22 @@ export function CheckinBoard({ match, joinedAttendance, users }: CheckinBoardPro
                       key={user.id}
                       type="button"
                       layout
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() =>
-                        setCheckin(match.id, user.id, isPresent ? 'pending' : 'present')
-                      }
+                      disabled={isOverdue}
+                      whileTap={isOverdue ? undefined : { scale: 0.98 }}
+                      onClick={() => {
+                        if (isOverdue) return;
+                        setCheckin(match.id, user.id, isPresent ? 'pending' : 'present');
+                      }}
                       className={cn(
-                        'flex w-full items-center justify-between rounded-xl border p-2.5 text-left transition-all cursor-pointer',
+                        'flex w-full items-center justify-between rounded-xl border p-2.5 text-left transition-all',
+                        isOverdue
+                          ? 'disabled:cursor-not-allowed disabled:opacity-60'
+                          : 'cursor-pointer',
                         isPresent
                           ? 'border-success/40 bg-success/10 shadow-xs'
-                          : 'border-border/70 bg-surface hover:bg-muted/10'
+                          : isOverdue
+                            ? 'border-border/70 bg-surface'
+                            : 'border-border/70 bg-surface hover:bg-muted/10'
                       )}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
@@ -143,7 +160,7 @@ export function CheckinBoard({ match, joinedAttendance, users }: CheckinBoardPro
               type="button"
               variant="danger"
               size="lg"
-              disabled={joinedUserItems.length === 0}
+              disabled={joinedUserItems.length === 0 && !isOverdue}
               onClick={() => setFinalizeOpen(true)}
               className="w-full font-bold shadow-xs gap-2"
             >

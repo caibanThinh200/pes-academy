@@ -1,8 +1,20 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import type { Match } from '@/types/database';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
+}
+
+export function isMatchOverdue(
+  match: Pick<Match, 'status' | 'match_date'>,
+  nowMs = Date.now()
+): boolean {
+  if (match.status !== 'voting' && match.status !== 'checkin') {
+    return false;
+  }
+  const parsed = Date.parse(match.match_date);
+  return Number.isFinite(parsed) && parsed < nowMs;
 }
 
 export function formatMatchDate(dateStr: string): string {

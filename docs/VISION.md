@@ -13,6 +13,7 @@ This document tracks all features and architectural milestones for PES Academy �
 | **FEAT-004** | Leaderboard & penalty board tab | Frontend | Done | Academy leaderboard: Golden Boot (top scorers), Golden Glove (top saves), Hall of Shame / Penalty Board (absence fines & discipline tracker) with podium highlights. Source: `onboarding/screen.md §3` |
 | **FEAT-005** | Authentication & role-based authorization | Frontend / Auth / DB | Done | Account-name + password login (`/login`, `/forgot-password`, `/change-password`), proxy route guard, role-based Supabase RLS, admin password reset (`SUPABASE_SERVICE_ROLE_KEY`), and session-derived roles (Player/Admin toggle removed). |
 | **UPD-002** | Real squad import + Playmaker (assists) stat | DB / Frontend | Done | 33 players imported from "Thống Kê Chuyên Môn" CSV (season totals only), mock data removed, new `total_assists` column + Playmaker leaderboard; video AI does not detect assists yet. |
+| **UPD-003** | Solid green primary button with white tick for joined vote toggle | Frontend (`components/ui/button.tsx`, `components/matches/vote-toggle-button.tsx`) | Done | Added `'success'` button variant (`bg-success text-white`) and updated joined state of `VoteToggleButton` to render solid green with a white `<Check />` icon. |
 
 ---
 

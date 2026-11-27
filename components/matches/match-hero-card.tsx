@@ -7,7 +7,7 @@ import { Match, User } from '@/types/database';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar } from '@/components/ui/avatar';
-import { formatMatchDate } from '@/lib/utils';
+import { formatMatchDate, isMatchOverdue, cn } from '@/lib/utils';
 
 export interface MatchHeroCardProps {
   match: Match;
@@ -17,6 +17,7 @@ export interface MatchHeroCardProps {
 }
 
 export function MatchHeroCard({ match, joinedUsers }: MatchHeroCardProps) {
+  const isOverdue = isMatchOverdue(match);
   const isVoting = match.status === 'voting';
   const isCheckin = match.status === 'checkin';
   const progressPercent = Math.min(100, Math.round((joinedUsers.length / 14) * 100));
@@ -27,7 +28,14 @@ export function MatchHeroCard({ match, joinedUsers }: MatchHeroCardProps) {
 
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          {isVoting ? (
+          {isOverdue ? (
+            <Badge
+              variant="danger"
+              className="gap-1 px-2.5 py-1 text-xs uppercase tracking-wider font-bold"
+            >
+              Overdue
+            </Badge>
+          ) : isVoting ? (
             <Badge
               variant="primary"
               className="gap-1 px-2.5 py-1 text-xs uppercase tracking-wider font-bold"
@@ -51,8 +59,13 @@ export function MatchHeroCard({ match, joinedUsers }: MatchHeroCardProps) {
               {match.status}
             </Badge>
           )}
-          <span className="text-xs font-semibold text-muted">
-            {isCheckin ? 'Live Now' : 'Upcoming'}
+          <span
+            className={cn(
+              'text-xs font-semibold',
+              isOverdue ? 'text-danger' : 'text-muted'
+            )}
+          >
+            {isOverdue ? 'Overdue' : isCheckin ? 'Live Now' : 'Upcoming'}
           </span>
         </div>
         <CardTitle className="text-lg font-bold text-foreground mt-2">

@@ -45,7 +45,7 @@ export function BottomNav() {
       aria-label="Bottom Navigation"
       className="fixed bottom-0 left-0 right-0 z-30 border-t border-border bg-surface/80 backdrop-blur-xl transition-colors pb-safe"
     >
-      <div className="mx-auto flex h-16 max-w-md items-center justify-around px-2">
+      <div className="mx-auto flex h-16 max-w-lg items-center justify-around px-2">
         {NAV_ITEMS.map((item) => {
           const isActive =
             item.href === '/'

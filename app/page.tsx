@@ -4,6 +4,7 @@ import * as React from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { Calendar, Plus } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
+import { isMatchOverdue } from '@/lib/utils';
 import { User } from '@/types/database';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -21,6 +22,7 @@ export default function MatchesPage() {
 
   // Active match = first match in matches with status 'voting' or 'checkin'
   const activeMatch = matches.find((m) => m.status === 'voting' || m.status === 'checkin');
+  const isActiveMatchOverdue = activeMatch ? isMatchOverdue(activeMatch) : false;
 
   // Recent match = first match with status 'review' or 'completed'
   const recentMatch = matches.find((m) => m.status === 'review' || m.status === 'completed');
@@ -57,8 +59,8 @@ export default function MatchesPage() {
   return (
     <div className="space-y-5">
       {/* Header Row */}
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
           <h1 className="text-xl font-extrabold tracking-tight text-foreground">
             Fixtures & Matches
           </h1>
@@ -69,9 +71,9 @@ export default function MatchesPage() {
             size="sm"
             variant="gold"
             onClick={() => setCreateSheetOpen(true)}
-            className="font-bold gap-1.5 shadow-xs"
+            className="shrink-0 whitespace-nowrap font-bold gap-1.5 shadow-xs"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-4 w-4 shrink-0" />
             <span>Create Match</span>
           </Button>
         )}
@@ -97,12 +99,18 @@ export default function MatchesPage() {
             <VoteToggleButton
               joined={hasJoined}
               onToggle={handleToggleVote}
-              disabled={activeMatch.status === 'checkin'}
+              disabled={activeMatch.status === 'checkin' || isActiveMatchOverdue}
             />
-            {activeMatch.status === 'checkin' && (
-              <p className="text-center text-xs text-muted font-medium">
-                Voting closed — check-in in progress
+            {isActiveMatchOverdue ? (
+              <p className="text-center text-xs text-danger font-medium">
+                Match overdue — voting &amp; check-in closed
               </p>
+            ) : (
+              activeMatch.status === 'checkin' && (
+                <p className="text-center text-xs text-muted font-medium">
+                  Voting closed during check-in
+                </p>
+              )
             )}
           </div>
 

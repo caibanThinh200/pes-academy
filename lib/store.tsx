@@ -22,7 +22,7 @@ import {
 } from '@/types/database';
 import { INITIAL_USERS, INITIAL_MATCHES, INITIAL_ATTENDANCE, INITIAL_EVENTS } from './mock-data';
 import { supabase, isSupabaseConfigured } from './supabase';
-import { formatTimestamp } from './utils';
+import { formatTimestamp, isMatchOverdue } from './utils';
 import { logout } from '@/app/actions/auth';
 
 interface AppState {
@@ -167,6 +167,10 @@ function appReducer(state: AppState, action: Action): AppState {
 
     case 'SET_CHECKIN': {
       const { matchId, userId, status, id } = action.payload;
+      const targetMatch = state.matches.find((m) => m.id === matchId);
+      if (targetMatch && isMatchOverdue(targetMatch)) {
+        return state;
+      }
       const existingIndex = state.attendance.findIndex(
         (a) => a.match_id === matchId && a.user_id === userId
       );
@@ -574,6 +578,11 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setCheckin = useCallback((matchId: string, userId: string, status: CheckinStatus) => {
+    const targetMatch = stateRef.current.matches.find((m) => m.id === matchId);
+    if (targetMatch && isMatchOverdue(targetMatch)) {
+      return;
+    }
+
     const existing = stateRef.current.attendance.find(
       (a) => a.match_id === matchId && a.user_id === userId
     );
